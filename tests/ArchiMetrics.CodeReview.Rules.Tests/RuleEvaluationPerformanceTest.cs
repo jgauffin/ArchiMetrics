@@ -12,11 +12,13 @@
 
 namespace ArchiMetrics.CodeReview.Rules.Tests
 {
+    using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.Linq;
     using System.Threading.Tasks;
     using Analysis;
     using Analysis.Common;
     using Analysis.Common.CodeReview;
-    using metrics;
     using Microsoft.CodeAnalysis.MSBuild;
     using Moq;
     using Xunit;
@@ -36,14 +38,16 @@ namespace ArchiMetrics.CodeReview.Rules.Tests
         [Fact]
         public void MeasurePerformance()
         {
-            var metrics = new Metrics();
-            var timer = metrics.Timer(GetType(), "test", TimeUnit.Seconds, TimeUnit.Seconds);
+            var durations = new List<double>();
             for (var i = 0; i < 10; i++)
             {
-                var amount = timer.Time(() => PerformReview().Result);
+                var sw = Stopwatch.StartNew();
+                PerformReview().Wait();
+                sw.Stop();
+                durations.Add(sw.Elapsed.TotalSeconds);
             }
 
-            Assert.True(timer.Mean < 90.0);
+            Assert.True(durations.Average() < 90.0);
         }
 
         private async Task<int> PerformReview()

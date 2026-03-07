@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="TypeCollector.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -38,7 +38,7 @@ namespace ArchiMetrics.Analysis.Metrics
 
 			public IEnumerable<TypeDeclarationSyntax> GetTypes(SyntaxNode namespaceNode)
 			{
-				var node = namespaceNode as NamespaceDeclarationSyntax;
+				var node = namespaceNode as BaseNamespaceDeclarationSyntax;
 				if (node != null)
 				{
 					Visit(node);

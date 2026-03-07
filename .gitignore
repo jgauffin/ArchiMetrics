@@ -29,3 +29,4 @@ project.lock.json
 .idea
 *.userprefs
 *.iml
+models/unixcoder/

@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="LinqExtensions.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -25,11 +25,6 @@ namespace ArchiMetrics.Analysis.Common
             return array ?? items.ToArray();
         }
 
-        public static IEnumerable<T> DistinctBy<T, TOut>(this IEnumerable<T> source, Func<T, TOut> func)
-        {
-            var comparer = new FuncComparer<T, TOut>(func);
-            return source.Distinct(comparer);
-        }
 
         public static IEnumerable<T> WhereNot<T>(this IEnumerable<T> source, Func<T, bool> filter)
         {
@@ -56,24 +51,5 @@ namespace ArchiMetrics.Analysis.Common
             return collection.Contains(item);
         }
 
-        private class FuncComparer<T, TOut> : IEqualityComparer<T>
-        {
-            private readonly Func<T, TOut> _func;
-
-            public FuncComparer(Func<T, TOut> func)
-            {
-                _func = func;
-            }
-
-            public bool Equals(T x, T y)
-            {
-                return _func(x).Equals(_func(y));
-            }
-
-            public int GetHashCode(T obj)
-            {
-                return _func(obj).GetHashCode();
-            }
-        }
     }
 }

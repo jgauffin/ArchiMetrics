@@ -12,11 +12,13 @@
 
 namespace ArchiMetrics.Analysis.Tests
 {
+    using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.Linq;
     using System.Threading.Tasks;
     using ArchiMetrics.Analysis.Metrics;
     using Common;
     using Common.Metrics;
-    using metrics;
     using Microsoft.CodeAnalysis;
     using Microsoft.CodeAnalysis.MSBuild;
     using Xunit;
@@ -37,14 +39,16 @@ namespace ArchiMetrics.Analysis.Tests
             {
                 var path = @"..\..\..\..\..\archimetrics.sln".GetLowerCaseFullPath();
                 var solution = await workspace.OpenSolutionAsync(path).ConfigureAwait(false);
-                var metrics = new metrics.Metrics();
-                var timer = metrics.Timer(GetType(), "test", TimeUnit.Seconds, TimeUnit.Seconds);
+                var durations = new List<double>();
                 for (var i = 0; i < 5; i++)
                 {
-                    var amount = timer.Time(() => PerformReview(solution).Result);
+                    var sw = Stopwatch.StartNew();
+                    PerformReview(solution).Wait();
+                    sw.Stop();
+                    durations.Add(sw.Elapsed.TotalSeconds);
                 }
 
-                Assert.True(timer.Mean < 90.0);
+                Assert.True(durations.Average() < 90.0);
             }
         }
 
@@ -55,14 +59,16 @@ namespace ArchiMetrics.Analysis.Tests
             {
                 var path = @"..\..\..\..\..\src\ArchiMetrics.Analysis\ArchiMetrics.Analysis.csproj".GetLowerCaseFullPath();
                 var project = await workspace.OpenProjectAsync(path).ConfigureAwait(false);
-                var metrics = new metrics.Metrics();
-                var timer = metrics.Timer(GetType(), "test", TimeUnit.Seconds, TimeUnit.Seconds);
+                var durations = new List<double>();
                 for (var i = 0; i < 5; i++)
                 {
-                    var amount = timer.Time(() => PerformReview(project).Result);
+                    var sw = Stopwatch.StartNew();
+                    PerformReview(project).Wait();
+                    sw.Stop();
+                    durations.Add(sw.Elapsed.TotalSeconds);
                 }
 
-                Assert.True(timer.Mean < 90.0);
+                Assert.True(durations.Average() < 90.0);
             }
         }
 

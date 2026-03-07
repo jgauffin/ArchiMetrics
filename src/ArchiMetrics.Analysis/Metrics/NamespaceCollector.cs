@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="NamespaceCollector.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -20,15 +20,15 @@ namespace ArchiMetrics.Analysis.Metrics
 
 	internal sealed class NamespaceCollector : CSharpSyntaxWalker
 	{
-		private readonly IList<NamespaceDeclarationSyntax> _namespaces;
+		private readonly IList<BaseNamespaceDeclarationSyntax> _namespaces;
 
 		public NamespaceCollector()
 			: base(SyntaxWalkerDepth.Node)
 		{
-			_namespaces = new List<NamespaceDeclarationSyntax>();
+			_namespaces = new List<BaseNamespaceDeclarationSyntax>();
 		}
 
-		public IEnumerable<NamespaceDeclarationSyntax> GetNamespaces(SyntaxNode commonNode)
+		public IEnumerable<BaseNamespaceDeclarationSyntax> GetNamespaces(SyntaxNode commonNode)
 		{
 			var node = commonNode as SyntaxNode;
 			if (node != null)
@@ -42,6 +42,12 @@ namespace ArchiMetrics.Analysis.Metrics
 		public override void VisitNamespaceDeclaration(NamespaceDeclarationSyntax node)
 		{
 			base.VisitNamespaceDeclaration(node);
+			_namespaces.Add(node);
+		}
+
+		public override void VisitFileScopedNamespaceDeclaration(FileScopedNamespaceDeclarationSyntax node)
+		{
+			base.VisitFileScopedNamespaceDeclaration(node);
 			_namespaces.Add(node);
 		}
 	}

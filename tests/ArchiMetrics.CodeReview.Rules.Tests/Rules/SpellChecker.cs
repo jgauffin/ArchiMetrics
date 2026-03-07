@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="SpellChecker.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright Â© Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -14,26 +14,28 @@ namespace ArchiMetrics.CodeReview.Rules.Tests.Rules
 {
 	using System;
 	using System.IO;
+	using System.IO.Compression;
 	using System.Linq;
 	using Analysis.Common.CodeReview;
-	using Ionic.Zip;
-	using NHunspell;
+	using WeCantSpell.Hunspell;
 
 	internal class SpellChecker : ISpellChecker
 	{
 		private readonly IKnownPatterns _knownPatterns;
-		private readonly Hunspell _speller;
+		private readonly WordList _speller;
 
 		public SpellChecker(IKnownPatterns knownPatterns)
 		{
 			_knownPatterns = knownPatterns;
-			using (var dictFile = ZipFile.Read(@"Dictionaries\dict-en.oxt"))
+			using (var archive = ZipFile.OpenRead(@"Dictionaries\dict-en.oxt"))
 			{
-				var affStream = new MemoryStream();
-				var dicStream = new MemoryStream();
-				dictFile.FirstOrDefault(z => z.FileName == "en_US.aff").Extract(affStream);
-				dictFile.FirstOrDefault(z => z.FileName == "en_US.dic").Extract(dicStream);
-				_speller = new Hunspell(affStream.ToArray(), dicStream.ToArray());
+				var affEntry = archive.Entries.FirstOrDefault(z => z.FullName == "en_US.aff");
+				var dicEntry = archive.Entries.FirstOrDefault(z => z.FullName == "en_US.dic");
+				using (var affStream = affEntry.Open())
+				using (var dicStream = dicEntry.Open())
+				{
+					_speller = WordList.CreateFromStreams(dicStream, affStream);
+				}
 			}
 		}
 
@@ -44,7 +46,7 @@ namespace ArchiMetrics.CodeReview.Rules.Tests.Rules
 
 		public bool Spell(string word)
 		{
-			return _knownPatterns.IsExempt(word) || _speller.Spell(word);
+			return _knownPatterns.IsExempt(word) || _speller.Check(word);
 		}
 
 		public void Dispose()
@@ -55,10 +57,6 @@ namespace ArchiMetrics.CodeReview.Rules.Tests.Rules
 
 		protected virtual void Dispose(bool isDisposing)
 		{
-			if (isDisposing)
-			{
-				_speller.Dispose(true);
-			}
 		}
 	}
 }

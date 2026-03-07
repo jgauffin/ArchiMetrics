@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk" ToolsVersion="15.0">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Title>Roslyn Code Analysis</Title>
     <Copyright>Jacob Reimers, Matthias Friedrich</Copyright>
@@ -6,7 +6,7 @@
     <Version>2.0.1</Version>
     <Authors>Jacob Reimers;Matthias Friedrich</Authors>
     <Company>Reimers.dk</Company>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>ArchiMetrics.Analysis</AssemblyName>
     <PackageTags>Roslyn;Metrics;Analysis</PackageTags>
     <PackageReleaseNotes>Updated to use Roslyn 2.0</PackageReleaseNotes>
@@ -66,23 +66,16 @@
       - Afferent Coupling
       - Halstead Metrics
     </Description>
-    <Copyright>Jacob Reimers, Matthias Friedrich</Copyright>
-    <AssemblyTitle>Roslyn Code Analysis</AssemblyTitle>
-    <VersionPrefix>2.0.0</VersionPrefix>
-    <Authors>Jacob Reimers;Matthias Friedrich</Authors>
-    <Company>Reimers.dk</Company>
-    <TargetFramework>net461</TargetFramework>
-    <AssemblyName>ArchiMetrics.Analysis</AssemblyName>
-    <PackageTags>Roslyn;Metrics;Analysis</PackageTags>
-    <PackageProjectUrl>https://github.com/jjrdk/ArchiMetrics</PackageProjectUrl>
-    <PackageLicenseUrl>http://www.opensource.org/licenses/MIT</PackageLicenseUrl>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="**\*.resx" />
     <EmbeddedResource Include="compiler\resources\**\*" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="2.0.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.0.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.22.0" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="1.0.2" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Properties\" />

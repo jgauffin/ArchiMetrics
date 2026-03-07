@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="CodeMetricsCalculator.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -62,11 +62,11 @@ namespace ArchiMetrics.Analysis
             var declarations = _syntaxCollector.GetDeclarations(trees);
             var statementMembers = declarations.Statements.Select(s =>
                 s is StatementSyntax
-                ? SyntaxFactory.MethodDeclaration(
+                ? (MemberDeclarationSyntax)SyntaxFactory.MethodDeclaration(
                     SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword)),
                     Guid.NewGuid().ToString("N"))
                     .WithBody(SyntaxFactory.Block((StatementSyntax)s))
-                    : s);
+                    : (MemberDeclarationSyntax)s);
             var members = declarations.MemberDeclarations.Concat(statementMembers).AsArray();
             var anonClass = members.Any()
                                 ? new[]

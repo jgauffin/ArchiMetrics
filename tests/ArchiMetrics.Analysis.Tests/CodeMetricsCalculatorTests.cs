@@ -12,9 +12,12 @@
 
 namespace ArchiMetrics.Analysis.Tests
 {
+    using System;
+    using System.Diagnostics;
     using System.Linq;
     using System.Threading.Tasks;
     using ArchiMetrics.Analysis.Metrics;
+    using Microsoft.CodeAnalysis;
     using Microsoft.CodeAnalysis.CSharp;
     using Xunit;
 
@@ -38,14 +41,14 @@ namespace ArchiMetrics.Analysis.Tests
             {
                 var snippet = @"
 using System;
-using system.Diagnostics;
+using System.Diagnostics;
 
 namespace Metric.Test
 {
     public class Testmetricclass
     {
         public void TestClassCoupling()
-        { 
+        {
             Console.WriteLine(""Hello world"");
             Trace.WriteLine(""This method uses Console and Trace"");
         }
@@ -53,10 +56,15 @@ namespace Metric.Test
 }";
 
                 var tree = CSharpSyntaxTree.ParseText(snippet);
-                var metrics = await _calculator.Calculate(new[] { tree });
+                var metrics = await _calculator.Calculate(
+                    new[] { tree },
+                    typeof(object).Assembly,
+                    typeof(Console).Assembly,
+                    typeof(Trace).Assembly);
 
-                var actual = metrics.First().Dependencies.Count();
-                Assert.Equal(2, actual);
+                var dependencies = metrics.First().Dependencies.ToArray();
+                Assert.Contains(dependencies, d => d.TypeName == "Console");
+                Assert.Contains(dependencies, d => d.TypeName == "Trace");
             }
 
             [Fact]

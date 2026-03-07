@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="SyntaxCollector.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -22,7 +22,7 @@ namespace ArchiMetrics.Analysis.Metrics
 	internal sealed class SyntaxCollector : CSharpSyntaxWalker
 	{
 		private readonly IList<MemberDeclarationSyntax> _members = new List<MemberDeclarationSyntax>();
-		private readonly IList<NamespaceDeclarationSyntax> _namespaces = new List<NamespaceDeclarationSyntax>();
+		private readonly IList<BaseNamespaceDeclarationSyntax> _namespaces = new List<BaseNamespaceDeclarationSyntax>();
 		private readonly IList<SyntaxNode> _statements = new List<SyntaxNode>();
 		private readonly IList<TypeDeclarationSyntax> _types = new List<TypeDeclarationSyntax>();
 
@@ -46,6 +46,11 @@ namespace ArchiMetrics.Analysis.Metrics
 		}
 
 		public override void VisitNamespaceDeclaration(NamespaceDeclarationSyntax node)
+		{
+			_namespaces.Add(node);
+		}
+
+		public override void VisitFileScopedNamespaceDeclaration(FileScopedNamespaceDeclarationSyntax node)
 		{
 			_namespaces.Add(node);
 		}
@@ -93,11 +98,12 @@ namespace ArchiMetrics.Analysis.Metrics
 		private void CheckStatementSyntax(SyntaxNode node)
 		{
 			var syntaxNodes = node.ChildNodes().AsArray();
-			
+
 			var statements =
 				syntaxNodes
 				.Where(x => !(x is TypeDeclarationSyntax))
-					.Where(x => x is BaseFieldDeclarationSyntax || x is StatementSyntax)
+					.Where(x => x is BaseFieldDeclarationSyntax || x is StatementSyntax || x is GlobalStatementSyntax)
+					.Select(x => x is GlobalStatementSyntax g ? (SyntaxNode)g.Statement : x)
 					.AsArray();
 
 			foreach (var statement in statements)

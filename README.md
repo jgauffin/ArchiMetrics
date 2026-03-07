@@ -1,14 +1,48 @@
-# ArchiMetrics
+# ArchiMetrics (Fork)
 
-Various code analysis tools for C#.
+This is a fork of [jjrdk/ArchiMetrics](https://github.com/jjrdk/ArchiMetrics), a Roslyn-based C# code analysis toolkit.
 
-To build simply run the build.ps1 script.
+## Purpose
 
-If that fails, please log an issue, because the idea is to have a one click build experience. Before logging an issue, please check that you have the latest MSBuild installed.
+This fork exists to provide **code quality metrics to AI agents** via the [csharp-language-server](https://github.com/jgauffin/csharp-language-server) MCP server. By exposing metrics like complexity, coupling, and duplication through a language server, agents can reason about code quality when reviewing, refactoring, or generating code.
 
-## About the project
+## What changed in this fork
 
-ArchiMetrics is a collection of code analysis tools using Roslyn. It will calculate code metrics which can be queried using normal LINQ syntax.
+The original project provides code metrics (complexity, coupling, Halstead, etc.). This fork adds **code duplication detection** using a layered approach:
+
+1. **AST Fingerprinting** — Normalizes Roslyn syntax trees (replacing identifiers/literals with generic tokens), hashes them, and groups by hash. Catches exact copies and renamed-variable clones instantly with zero dependencies.
+2. **Embedding Similarity** — Feeds normalized method text through a local ONNX model ([UniXcoder](https://github.com/microsoft/CodeBERT/tree/main/UniXcoder)) and compares cosine similarity between embedding vectors. Catches semantic clones that differ structurally but do the same thing.
+
+Layer 1 runs first as a fast pass. Layer 2 runs on the remaining methods, skipping pairs already detected by Layer 1. The embedding layer is optional — if no model is provided, only AST fingerprinting runs.
+
+### New files
+
+| File | Purpose |
+|------|---------|
+| `Metrics/DuplicationDetector.cs` | Public facade — layers both approaches |
+| `Metrics/SyntaxFingerprintAnalyzer.cs` | Layer 1: hash-based clone detection |
+| `Metrics/SyntaxNormalizer.cs` | Replaces identifiers/literals with generic tokens |
+| `Metrics/MethodExtractor.cs` | Walks syntax trees, extracts method bodies |
+| `Metrics/EmbeddingSimilarityAnalyzer.cs` | Layer 2: cosine similarity on embeddings |
+| `Metrics/OnnxEmbeddingProvider.cs` | ONNX Runtime + CodeGenTokenizer integration |
+| `Common/Metrics/IEmbeddingProvider.cs` | Pluggable interface for embedding backends |
+| `Common/Metrics/CloneType.cs` | Enum: Exact, Renamed, Semantic |
+| `Common/Metrics/CloneInstance.cs` | A code location that's part of a clone |
+| `Common/Metrics/ClonePair.cs` | Two instances + similarity score |
+| `Common/Metrics/CloneClass.cs` | A group of clone instances |
+| `Common/Metrics/DuplicationResult.cs` | Top-level result container |
+| `models/download-unixcoder.py` | Downloads and quantizes UniXcoder to ONNX |
+
+### New dependencies
+
+- `Microsoft.ML.OnnxRuntime` 1.22.0 — local ONNX model inference
+- `Microsoft.ML.Tokenizers` 1.0.2 — BPE tokenization (CodeGenTokenizer)
+
+---
+
+## Original project
+
+ArchiMetrics is a collection of code analysis tools using Roslyn. It calculates code metrics which can be queried using normal LINQ syntax.
 
 The project calculates the following metrics:
 
@@ -58,6 +92,49 @@ The project calculates the following metrics:
 - Number Of Local Variables
 - Afferent Coupling
 - Halstead Metrics
+
+### Code Duplication Detection
+
+ArchiMetrics includes a layered code duplication detector:
+
+- **Layer 1 — AST Fingerprinting**: Fast, deterministic detection of exact and renamed-variable clones using Roslyn syntax tree hashing.
+- **Layer 2 — Embedding Similarity** (optional): Semantic clone detection using a local ONNX embedding model (UniXcoder).
+
+#### Setting up the embedding model
+
+Layer 2 requires a local ONNX model. To download and export UniXcoder (~125 MB quantized):
+
+```bash
+cd models
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # Linux/macOS
+pip install -r requirements.txt
+python download-unixcoder.py
+```
+
+This creates `models/unixcoder/` with `model.onnx`, `vocab.json`, and `merges.txt`.
+
+#### Usage
+
+```csharp
+// Layer 1 only (no model needed)
+var detector = new DuplicationDetector(rootFolder);
+var result = await detector.Detect(syntaxTrees);
+
+// Both layers (with embedding model)
+using var provider = OnnxEmbeddingProvider.Create(
+    modelPath: @"models\unixcoder\model.onnx",
+    vocabPath: @"models\unixcoder\vocab.json",
+    mergesPath: @"models\unixcoder\merges.txt");
+
+var detector = new DuplicationDetector(rootFolder, provider,
+    minimumTokens: 50, similarityThreshold: 0.85);
+var result = await detector.Detect(syntaxTrees);
+
+foreach (var clone in result.Clones)
+    Console.WriteLine($"{clone.CloneType}: {clone.Instances.Count} instances, similarity {clone.Similarity:P0}");
+```
 
 ## Using project
 

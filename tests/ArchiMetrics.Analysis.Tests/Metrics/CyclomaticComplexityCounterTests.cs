@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="CyclomaticComplexityCounterTests.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright ï¿½ Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -18,7 +18,7 @@ namespace ArchiMetrics.Analysis.Tests.Metrics
     using Microsoft.CodeAnalysis.CSharp;
     using Microsoft.CodeAnalysis.CSharp.Syntax;
     using Xunit;
-    using m = metrics;
+    using System.Diagnostics;
 
     public sealed class CyclomaticComplexityCounterTests
     {
@@ -116,7 +116,11 @@ namespace MyNs
 }", 1)]
             public void MethodHasExpectedComplexity(string method, int expectedComplexity)
             {
-                var tree = CSharpSyntaxTree.ParseText(method);
+                var hasNamespace = method.Contains("namespace ");
+                var code = hasNamespace
+                    ? method
+                    : $"class __Wrapper__ {{ {method} }}";
+                var tree = CSharpSyntaxTree.ParseText(code);
                 var compilation = CSharpCompilation.Create(
                     "x",
                     syntaxTrees: new[] {tree},
@@ -126,7 +130,6 @@ namespace MyNs
                         MetadataReference.CreateFromFile(typeof (object).Assembly.Location),
                         MetadataReference.CreateFromFile(typeof (Task).Assembly.Location)
                     });
-                    //options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, false, null, null, null, new string[] { "System", "System.Threading.Tasks" }));
 
                 var model = compilation.GetSemanticModel(tree, true);
                 var syntaxNode = tree
@@ -135,14 +138,7 @@ namespace MyNs
                     .OfType<MethodDeclarationSyntax>()
                     .First();
 
-                var metrics = new m.Metrics();
-                var timer = metrics.Timer(
-                    typeof(ProjectMetricTests),
-                    "TestTimer",
-                    m.TimeUnit.Milliseconds,
-                    m.TimeUnit.Microseconds);
-
-                var result = timer.Time(() => _counter.Calculate(syntaxNode, model));
+                var result = _counter.Calculate(syntaxNode, model);
 
                 Assert.Equal(expectedComplexity, result);
             }
