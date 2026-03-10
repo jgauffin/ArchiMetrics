@@ -55,8 +55,8 @@ namespace ArchiMetrics.CodeReview.Rules.Tests
             using (var workspace = MSBuildWorkspace.Create())
             {
                 var path = @"..\..\..\..\..\archimetrics.sln".GetLowerCaseFullPath();
-                var solution = await workspace.OpenSolutionAsync(path).ConfigureAwait(false);
-                var results = await _reviewer.Inspect(solution).ConfigureAwait(false);
+                var solution = await workspace.OpenSolutionAsync(path);
+                var results = await _reviewer.Inspect(solution);
                 var amount = results.AsArray();
                 return amount.Length;
             }

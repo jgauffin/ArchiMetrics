@@ -25,7 +25,7 @@ namespace ArchiMetrics.Analysis.Tests
 		{
 			var path = @"..\..\..\..\..\archimetrics.sln".GetLowerCaseFullPath();
 			var workspace = MSBuildWorkspace.Create();
-			var solution = await workspace.OpenSolutionAsync(path).ConfigureAwait(false);
+			var solution = await workspace.OpenSolutionAsync(path);
 
 			Assert.True(solution.Projects.Any());
 		}

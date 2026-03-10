@@ -38,7 +38,7 @@ namespace ArchiMetrics.Analysis.Tests
             using (var workspace = MSBuildWorkspace.Create())
             {
                 var path = @"..\..\..\..\..\archimetrics.sln".GetLowerCaseFullPath();
-                var solution = await workspace.OpenSolutionAsync(path).ConfigureAwait(false);
+                var solution = await workspace.OpenSolutionAsync(path);
                 var durations = new List<double>();
                 for (var i = 0; i < 5; i++)
                 {
@@ -58,7 +58,7 @@ namespace ArchiMetrics.Analysis.Tests
             using (var workspace = MSBuildWorkspace.Create())
             {
                 var path = @"..\..\..\..\..\src\ArchiMetrics.Analysis\ArchiMetrics.Analysis.csproj".GetLowerCaseFullPath();
-                var project = await workspace.OpenProjectAsync(path).ConfigureAwait(false);
+                var project = await workspace.OpenProjectAsync(path);
                 var durations = new List<double>();
                 for (var i = 0; i < 5; i++)
                 {
@@ -74,14 +74,14 @@ namespace ArchiMetrics.Analysis.Tests
 
         private async Task<int> PerformReview(Solution solution)
         {
-            var results = await _calculator.Calculate(solution).ConfigureAwait(false);
+            var results = await _calculator.Calculate(solution);
             var amount = results.AsArray();
             return amount.Length;
         }
 
         private async Task<IProjectMetric> PerformReview(Project project)
         {
-            var results = await _calculator.Calculate(project, null).ConfigureAwait(false);
+            var results = await _calculator.Calculate(project, null);
 
             return results;
         }

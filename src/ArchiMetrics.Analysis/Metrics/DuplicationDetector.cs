@@ -14,17 +14,20 @@ namespace ArchiMetrics.Analysis.Metrics
         private readonly string _rootFolder;
         private readonly int _minimumTokens;
         private readonly double _similarityThreshold;
+        private readonly int _maxClusterSize;
 
         public DuplicationDetector(
             string rootFolder,
             IEmbeddingProvider embeddingProvider = null,
             int minimumTokens = 50,
-            double similarityThreshold = 0.85)
+            double similarityThreshold = 0.85,
+            int maxClusterSize = 15)
         {
             _rootFolder = rootFolder;
             _embeddingProvider = embeddingProvider;
             _minimumTokens = minimumTokens;
             _similarityThreshold = similarityThreshold;
+            _maxClusterSize = maxClusterSize;
         }
 
         public async Task<DuplicationResult> Detect(
@@ -64,13 +67,13 @@ namespace ArchiMetrics.Analysis.Metrics
                 .ConfigureAwait(false);
 
             // Group semantic pairs into clone classes by connected components
-            var semanticClones = GroupIntoClusters(semanticPairs);
+            var semanticClones = GroupIntoClusters(semanticPairs, _maxClusterSize);
 
             var allClones = astClones.Concat(semanticClones).ToList();
             return new DuplicationResult(allClones);
         }
 
-        private static IReadOnlyList<CloneClass> GroupIntoClusters(IReadOnlyList<ClonePair> pairs)
+        internal static IReadOnlyList<CloneClass> GroupIntoClusters(IReadOnlyList<ClonePair> pairs, int maxClusterSize = 15)
         {
             if (pairs.Count == 0)
             {
@@ -100,7 +103,7 @@ namespace ArchiMetrics.Analysis.Metrics
             foreach (var group in groups)
             {
                 var instances = group.Select(k => instanceMap[k]).ToList();
-                if (instances.Count < 2) continue;
+                if (instances.Count < 2 || instances.Count > maxClusterSize) continue;
 
                 var avgSimilarity = pairs
                     .Where(p => Find(parent, Key(p.Left)) == Find(parent, Key(p.Right)))

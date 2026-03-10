@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="CodeMetricsCalculatorTests.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright ï¿½ Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -74,7 +74,7 @@ namespace SomeNamespace
 }
 ";
                 var tree = CSharpSyntaxTree.ParseText(Snippet);
-                var task = await _analyzer.Calculate(new[] { tree }).ConfigureAwait(false);
+                var task = await _analyzer.Calculate(new[] { tree });
 
                 var metrics = task.AsArray();
                 Assert.NotEmpty(metrics);
@@ -89,7 +89,7 @@ public class Something {
 }
 ";
                 var tree = CSharpSyntaxTree.ParseText(Snippet);
-                var task = await _analyzer.Calculate(new[] { tree }).ConfigureAwait(false);
+                var task = await _analyzer.Calculate(new[] { tree });
 
                 var metrics = task.AsArray();
                 Assert.NotEmpty(metrics);
@@ -104,7 +104,7 @@ public class Something {
 }
 ";
                 var tree = CSharpSyntaxTree.ParseText(Snippet, CSharpParseOptions.Default);
-                var task = await _analyzer.Calculate(new[] { tree }).ConfigureAwait(false);
+                var task = await _analyzer.Calculate(new[] { tree });
 
                 var metrics = task.AsArray();
                 Assert.NotEmpty(metrics);
@@ -117,7 +117,7 @@ public class Something {
 public int Foo() { return 1; }
 ";
                 var tree = CSharpSyntaxTree.ParseText(Snippet);
-                var task = await _analyzer.Calculate(new[] { tree }).ConfigureAwait(false);
+                var task = await _analyzer.Calculate(new[] { tree });
 
                 var metrics = task.AsArray();
                 Assert.NotEmpty(metrics);
@@ -228,7 +228,7 @@ using System.Linq;
             public async Task CodeHasExpectedLinesOfCode(string code, int loc)
             {
                 var project = CreateProject(code);
-                var metrics = await _analyzer.Calculate(project, null).ConfigureAwait(false);
+                var metrics = await _analyzer.Calculate(project, null);
 
                 Assert.Equal(loc, metrics.First().LinesOfCode);
             }

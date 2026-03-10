@@ -268,6 +268,87 @@ namespace Test
             }
         }
 
+        public class GroupIntoClustersTests
+        {
+            [Fact]
+            public void SmallClusterIsRetained()
+            {
+                var a = new CloneInstance("a.cs", 1, 10, "Foo", "body");
+                var b = new CloneInstance("b.cs", 1, 10, "Bar", "body");
+                var c = new CloneInstance("c.cs", 1, 10, "Baz", "body");
+
+                var pairs = new List<ClonePair>
+                {
+                    new ClonePair(a, b, CloneType.Semantic, 0.92),
+                    new ClonePair(b, c, CloneType.Semantic, 0.90),
+                };
+
+                var result = DuplicationDetector.GroupIntoClusters(pairs, maxClusterSize: 15);
+
+                Assert.Single(result);
+                Assert.Equal(3, result[0].Instances.Count);
+            }
+
+            [Fact]
+            public void OversizedClusterIsFiltered()
+            {
+                // Create 20 instances forming one big connected component
+                var instances = Enumerable.Range(0, 20)
+                    .Select(i => new CloneInstance($"file{i}.cs", 1, 10, $"Method{i}", "body"))
+                    .ToList();
+
+                var pairs = new List<ClonePair>();
+                for (var i = 0; i < instances.Count - 1; i++)
+                {
+                    pairs.Add(new ClonePair(instances[i], instances[i + 1], CloneType.Semantic, 0.96));
+                }
+
+                var result = DuplicationDetector.GroupIntoClusters(pairs, maxClusterSize: 15);
+
+                Assert.Empty(result);
+            }
+
+            [Fact]
+            public void MixedClustersOnlyFiltersOversized()
+            {
+                // Small cluster of 3
+                var a = new CloneInstance("a.cs", 1, 10, "A", "body");
+                var b = new CloneInstance("b.cs", 1, 10, "B", "body");
+                var c = new CloneInstance("c.cs", 1, 10, "C", "body");
+
+                // Large cluster of 5 (will exceed maxClusterSize=4)
+                var d = new CloneInstance("d.cs", 1, 10, "D", "body");
+                var e = new CloneInstance("e.cs", 1, 10, "E", "body");
+                var f = new CloneInstance("f.cs", 1, 10, "F", "body");
+                var g = new CloneInstance("g.cs", 1, 10, "G", "body");
+                var h = new CloneInstance("h.cs", 1, 10, "H", "body");
+
+                var pairs = new List<ClonePair>
+                {
+                    // Small cluster
+                    new ClonePair(a, b, CloneType.Semantic, 0.92),
+                    new ClonePair(b, c, CloneType.Semantic, 0.90),
+                    // Large cluster
+                    new ClonePair(d, e, CloneType.Semantic, 0.96),
+                    new ClonePair(e, f, CloneType.Semantic, 0.95),
+                    new ClonePair(f, g, CloneType.Semantic, 0.94),
+                    new ClonePair(g, h, CloneType.Semantic, 0.93),
+                };
+
+                var result = DuplicationDetector.GroupIntoClusters(pairs, maxClusterSize: 4);
+
+                Assert.Single(result);
+                Assert.Equal(3, result[0].Instances.Count);
+            }
+
+            [Fact]
+            public void EmptyPairsReturnsEmpty()
+            {
+                var result = DuplicationDetector.GroupIntoClusters(new List<ClonePair>());
+                Assert.Empty(result);
+            }
+        }
+
         public class CosineSimilarityTests
         {
             [Fact]
