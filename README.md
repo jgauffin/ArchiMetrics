@@ -6,103 +6,39 @@ This is a fork of [jjrdk/ArchiMetrics](https://github.com/jjrdk/ArchiMetrics), a
 
 This fork exists to provide **code quality metrics to AI agents** via the [csharp-language-server](https://github.com/jgauffin/csharp-language-server) MCP server. By exposing metrics like complexity, coupling, and duplication through a language server, agents can reason about code quality when reviewing, refactoring, or generating code.
 
-## What changed in this fork
+## What this fork adds
 
-The original project provides code metrics (complexity, coupling, Halstead, etc.). This fork adds **code duplication detection** using a layered approach:
+### CodeAnalysisAgent (main facade)
 
-1. **AST Fingerprinting** — Normalizes Roslyn syntax trees (replacing identifiers/literals with generic tokens), hashes them, and groups by hash. Catches exact copies and renamed-variable clones instantly with zero dependencies.
-2. **Embedding Similarity** — Feeds normalized method text through a local ONNX model ([UniXcoder](https://github.com/microsoft/CodeBERT/tree/main/UniXcoder)) and compares cosine similarity between embedding vectors. Catches semantic clones that differ structurally but do the same thing.
+`CodeAnalysisAgent` is the primary entry point for tools and agents consuming ArchiMetrics. It wraps a Roslyn `Workspace` and exposes all analysis capabilities through a paged API:
 
-Layer 1 runs first as a fast pass. Layer 2 runs on the remaining methods, skipping pairs already detected by Layer 1. The embedding layer is optional — if no model is provided, only AST fingerprinting runs.
+```csharp
+var agent = new CodeAnalysisAgent(workspace, rootFolder);
 
-### New files
+// Metrics
+var metrics = await agent.CalculateMetrics(projectName: "MyProject");
+var worstNamespaces = await agent.GetWorstNamespaces(take: 10);
+var worstTypes = await agent.GetWorstTypes(take: 10);
+var worstMethods = await agent.GetWorstMethods(take: 10);
 
-| File | Purpose |
-|------|---------|
-| `Metrics/DuplicationDetector.cs` | Public facade — layers both approaches |
-| `Metrics/SyntaxFingerprintAnalyzer.cs` | Layer 1: hash-based clone detection |
-| `Metrics/SyntaxNormalizer.cs` | Replaces identifiers/literals with generic tokens |
-| `Metrics/MethodExtractor.cs` | Walks syntax trees, extracts method bodies |
-| `Metrics/EmbeddingSimilarityAnalyzer.cs` | Layer 2: cosine similarity on embeddings |
-| `Metrics/OnnxEmbeddingProvider.cs` | ONNX Runtime + CodeGenTokenizer integration |
-| `Common/Metrics/IEmbeddingProvider.cs` | Pluggable interface for embedding backends |
-| `Common/Metrics/CloneType.cs` | Enum: Exact, Renamed, Semantic |
-| `Common/Metrics/CloneInstance.cs` | A code location that's part of a clone |
-| `Common/Metrics/ClonePair.cs` | Two instances + similarity score |
-| `Common/Metrics/CloneClass.cs` | A group of clone instances |
-| `Common/Metrics/DuplicationResult.cs` | Top-level result container |
-| `models/download-unixcoder.py` | Downloads and quantizes UniXcoder to ONNX |
+// Duplication (requires embedding provider for semantic layer)
+var clones = await agent.DetectDuplication(similarityThreshold: 0.85);
 
-### New dependencies
+// ISO 5055 report (no embedding provider needed)
+var inspector = new NodeReviewer(syntaxRules, symbolRules);
+var report = await agent.GenerateIso5055Report(inspector, allRules);
+```
 
-- `Microsoft.ML.OnnxRuntime` 1.22.0 — local ONNX model inference
-- `Microsoft.ML.Tokenizers` 1.0.2 — BPE tokenization (CodeGenTokenizer)
+### Code duplication detection
 
----
+Two-layer approach:
 
-## Original project
+1. **AST Fingerprinting** — Normalizes Roslyn syntax trees (replacing identifiers/literals with generic tokens), hashes them, and groups by hash. Catches exact copies and renamed-variable clones instantly.
+2. **Embedding Similarity** (optional) — Feeds normalized method text through a local ONNX model ([UniXcoder](https://github.com/microsoft/CodeBERT/tree/main/UniXcoder)) and compares cosine similarity. Catches semantic clones that differ structurally.
 
-ArchiMetrics is a collection of code analysis tools using Roslyn. It calculates code metrics which can be queried using normal LINQ syntax.
-
-The project calculates the following metrics:
-
-### Project Level
-
-- Cyclomatic Complexity
-- LinesOfCode
-- Maintainability Index
-- Project Dependencies
-- Type Couplings
-- Abstractness
-- Afferent Coupling
-- Efferent Coupling
-- RelationalCohesion
-
-### Namespace Level
-
-- Cyclomatic Complexity
-- LinesOfCode
-- Maintainability Index
-- Project Dependencies
-- Type Couplings
-- Depth of Inheritance
-- Abstractness
-
-### Type Level
-
-- Cyclomatic Complexity
-- LinesOfCode
-- Maintainability Index
-- Project Dependencies
-- Type Couplings
-- Depth Of Inheritance
-- Type Coupling
-- Afferent Coupling
-- Efferent Coupling
-- Instability
-
-### Member Level
-
-- Cyclomatic Complexity
-- Lines Of Code
-- Maintainability Index
-- Project Dependencies
-- Type Couplings
-- Number Of Parameters
-- Number Of Local Variables
-- Afferent Coupling
-- Halstead Metrics
-
-### Code Duplication Detection
-
-ArchiMetrics includes a layered code duplication detector:
-
-- **Layer 1 — AST Fingerprinting**: Fast, deterministic detection of exact and renamed-variable clones using Roslyn syntax tree hashing.
-- **Layer 2 — Embedding Similarity** (optional): Semantic clone detection using a local ONNX embedding model (UniXcoder).
+Layer 1 runs first as a fast pass. Layer 2 runs on remaining methods. The embedding layer is optional — if no model is provided, only AST fingerprinting runs.
 
 #### Setting up the embedding model
-
-Layer 2 requires a local ONNX model. To download and export UniXcoder (~125 MB quantized):
 
 ```bash
 cd models
@@ -113,76 +49,57 @@ pip install -r requirements.txt
 python download-unixcoder.py
 ```
 
-This creates `models/unixcoder/` with `model.onnx`, `vocab.json`, and `merges.txt`.
+Creates `models/unixcoder/` with `model.onnx`, `vocab.json`, and `merges.txt`.
 
-#### Usage
+### Partial ISO/IEC 5055 support
+
+ArchiMetrics can generate reports aligned with the [ISO/IEC 5055](https://www.iso.org/standard/80623.html) standard, which maps CWE (Common Weakness Enumeration) patterns to four quality categories. The report does **not** require an embedding provider — it uses only the rule engine and basic metrics.
+
+**How it works:**
+
+1. Existing and new rules implement the optional `ICweMapping` interface, mapping each rule to CWE identifiers and an ISO 5055 category.
+2. `NodeReviewer` runs the rules and populates CWE metadata on each `EvaluationResult`.
+3. `Iso5055ReportGenerator` aggregates violations by category and normalises as violations/KLOC.
+
+**Categories and current coverage:**
+
+| Category | Focus | Coverage |
+|----------|-------|----------|
+| **Security** | Exploitable vulnerabilities | Low — pattern-match rules only (unsafe code, CWE-242). No taint analysis. |
+| **Reliability** | Crash/corruption risks | Moderate — dispose pattern, stack trace destruction, event leaks, weak identity locks, virtual calls in constructors |
+| **Performance Efficiency** | Resource waste | Low — sync-over-async detection (CWE-1049) |
+| **Maintainability** | Structural decay | Good — cyclomatic complexity, deep nesting, large classes/methods, too many parameters, lack of cohesion, class instability, goto statements |
+
+**Limitations:** This is not a SAST replacement. Taint-analysis-dependent CWEs (SQL injection, XSS, command injection) require dedicated tools like CodeQL or Semgrep. The report includes `CoveredCweIds` so consumers know exactly which CWEs are in scope.
 
 ```csharp
-// Layer 1 only (no model needed)
-var detector = new DuplicationDetector(rootFolder);
-var result = await detector.Detect(syntaxTrees);
+// Generate an ISO 5055 report
+var syntaxRules = AllRules.GetSyntaxRules(spellChecker: null);
+var symbolRules = AllRules.GetSymbolRules();
+var inspector = new NodeReviewer(syntaxRules, symbolRules);
+var allRules = syntaxRules.Cast<IEvaluation>().Concat(symbolRules);
 
-// Both layers (with embedding model)
-using var provider = OnnxEmbeddingProvider.Create(
-    modelPath: @"models\unixcoder\model.onnx",
-    vocabPath: @"models\unixcoder\vocab.json",
-    mergesPath: @"models\unixcoder\merges.txt");
+var report = await agent.GenerateIso5055Report(inspector, allRules);
 
-var detector = new DuplicationDetector(rootFolder, provider,
-    minimumTokens: 50, similarityThreshold: 0.85);
-var result = await detector.Detect(syntaxTrees);
-
-foreach (var clone in result.Clones)
-    Console.WriteLine($"{clone.CloneType}: {clone.Instances.Count} instances, similarity {clone.Similarity:P0}");
+// report.Security.Passes       — true if zero critical security violations
+// report.Reliability.Passes    — true if zero critical reliability violations
+// report.Maintainability.ViolationsPerKloc — density metric
+// report.CoveredCweIds          — which CWEs the loaded rules can detect
 ```
 
-## Using project
+## Metrics
 
-If you are going to use metrics, you must install
+ArchiMetrics calculates metrics at four levels of granularity:
 
-[Microsoft Build Tools 2015 RC](http://www.microsoft.com/en-us/download/details.aspx?id=46882&WT.mc_id=rss_alldownloads_all)
+- **Project** — cyclomatic complexity, LOC, maintainability index, abstractness, afferent/efferent coupling, relational cohesion
+- **Namespace** — cyclomatic complexity, LOC, maintainability index, depth of inheritance, abstractness, class coupling
+- **Type** — cyclomatic complexity, LOC, maintainability index, depth of inheritance, afferent/efferent coupling, instability
+- **Member** — cyclomatic complexity, LOC, maintainability index, parameters, local variables, afferent coupling, Halstead metrics
 
-You also may need to install this package (included in latest nuget package)
+## Code review rules
 
-```
-Install-Package Microsoft.Composition
-```
+61 rules across syntax, semantic, and trivia analysis — covering code quality, maintainability, testability, modifiability, conformance, security, and performance. Rules are discovered via reflection and run through `NodeReviewer`.
 
-See this sample that loads your solution and prints the cyclomatic complexity for each namespace that belongs to your solution
+## Original project
 
-````csharp
-using System;
-using System.Linq;
-using System.Threading.Tasks;
-using ArchiMetrics.Analysis;
-using ArchiMetrics.Common;
-
-namespace ConsoleApplication
-{
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            var task = Run();
-            task.Wait();
-        }
-
-        private static async Task Run()
-        {
-            Console.WriteLine("Loading Solution");
-            var solutionProvider = new SolutionProvider();
-            var solution = await solutionProvider.Get(@"MyFullPathSolutionFile.sln");
-            Console.WriteLine("Solution loaded");
-
-            var projects = solution.Projects.ToList();
-
-            Console.WriteLine("Loading metrics, wait it may take a while.");
-            var metricsCalculator = new CodeMetricsCalculator();
-            var calculateTasks = projects.Select(p => metricsCalculator.Calculate(p, solution));
-            var metrics = (await Task.WhenAll(calculateTasks)).SelectMany(nm => nm);
-            foreach (var metric in metrics)
-                Console.WriteLine("{0} => {1}", metric.Name, metric.CyclomaticComplexity);
-        }
-    }
-}
-````
+ArchiMetrics was created by [Jacob Reimers](https://github.com/jjrdk). See the [original repository](https://github.com/jjrdk/ArchiMetrics) for history and license information.
