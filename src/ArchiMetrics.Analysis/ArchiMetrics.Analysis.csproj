@@ -3,8 +3,8 @@
     <Title>Roslyn Code Analysis</Title>
     <Copyright>Jacob Reimers, Matthias Friedrich</Copyright>
     <AssemblyTitle>Roslyn Code Analysis</AssemblyTitle>
-    <Version>2.0.1</Version>
-    <Authors>Jacob Reimers;Matthias Friedrich</Authors>
+    <Version>3.0.1</Version>
+    <Authors>Jonas Gauffin;Jacob Reimers;Matthias Friedrich</Authors>
     <Company>Reimers.dk</Company>
     <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>ArchiMetrics.Analysis</AssemblyName>
