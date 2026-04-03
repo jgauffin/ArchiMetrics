@@ -6,35 +6,25 @@ namespace ArchiMetrics.Analysis.Metrics
     using System.Threading;
     using System.Threading.Tasks;
     using Common.Metrics;
-    using Microsoft.CodeAnalysis;
 
     internal sealed class EmbeddingSimilarityAnalyzer
     {
         private readonly IEmbeddingProvider _embeddingProvider;
-        private readonly string _rootFolder;
         private readonly double _similarityThreshold;
-        private readonly int _minimumTokens;
 
         public EmbeddingSimilarityAnalyzer(
             IEmbeddingProvider embeddingProvider,
-            string rootFolder,
-            double similarityThreshold = 0.85,
-            int minimumTokens = 50)
+            double similarityThreshold = 0.85)
         {
             _embeddingProvider = embeddingProvider;
-            _rootFolder = rootFolder;
             _similarityThreshold = similarityThreshold;
-            _minimumTokens = minimumTokens;
         }
 
         public async Task<IReadOnlyList<ClonePair>> Analyze(
-            IEnumerable<SyntaxTree> trees,
+            IReadOnlyList<CloneInstance> instances,
             ISet<string> alreadyDetectedKeys,
             CancellationToken cancellationToken = default)
         {
-            var extractor = new MethodExtractor(_rootFolder, _minimumTokens);
-            var instances = extractor.Extract(trees);
-
             if (instances.Count < 2)
             {
                 return Array.Empty<ClonePair>();
@@ -68,30 +58,16 @@ namespace ArchiMetrics.Analysis.Metrics
 
         internal static string MakePairKey(CloneInstance a, CloneInstance b)
         {
-            var left = $"{a.FilePath}:{a.LineNumber}";
-            var right = $"{b.FilePath}:{b.LineNumber}";
-            return string.Compare(left, right, StringComparison.Ordinal) < 0
-                ? left + "|" + right
-                : right + "|" + left;
+            // Compare file paths first, then line numbers to establish canonical order
+            var cmp = string.Compare(a.FilePath, b.FilePath, StringComparison.Ordinal);
+            if (cmp == 0) cmp = a.LineNumber.CompareTo(b.LineNumber);
+
+            return cmp < 0
+                ? $"{a.FilePath}:{a.LineNumber}|{b.FilePath}:{b.LineNumber}"
+                : $"{b.FilePath}:{b.LineNumber}|{a.FilePath}:{a.LineNumber}";
         }
 
-        internal static double CosineSimilarity(float[] a, float[] b)
-        {
-            if (a.Length != b.Length || a.Length == 0)
-            {
-                return 0.0;
-            }
-
-            double dot = 0, normA = 0, normB = 0;
-            for (var i = 0; i < a.Length; i++)
-            {
-                dot += a[i] * (double)b[i];
-                normA += a[i] * (double)a[i];
-                normB += b[i] * (double)b[i];
-            }
-
-            var denom = Math.Sqrt(normA) * Math.Sqrt(normB);
-            return denom == 0 ? 0.0 : dot / denom;
-        }
+        internal static double CosineSimilarity(float[] a, float[] b) =>
+            VectorMath.CosineSimilarity(a, b);
     }
 }

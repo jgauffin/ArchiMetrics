@@ -12,6 +12,7 @@
 
 namespace ArchiMetrics.CodeReview.Rules.Semantic
 {
+	using System.Collections.Generic;
 	using System.Linq;
 	using System.Threading.Tasks;
 	using Analysis.Common;
@@ -21,8 +22,11 @@ namespace ArchiMetrics.CodeReview.Rules.Semantic
 	using Microsoft.CodeAnalysis.CSharp;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-    internal class LackOfCohesionOfMethodsRule : SemanticEvaluationBase
+    internal class LackOfCohesionOfMethodsRule : SemanticEvaluationBase, ICweMapping
 	{
+		public IReadOnlyList<string> CweIds { get; } = new[] { "CWE-1062" };
+		public Iso5055Category Iso5055Category => Iso5055Category.Maintainability;
+
 		private static readonly SymbolKind[] MemberKinds =
 		{
 			SymbolKind.Event, 

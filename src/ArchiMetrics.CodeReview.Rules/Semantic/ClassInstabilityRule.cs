@@ -23,8 +23,11 @@ namespace ArchiMetrics.CodeReview.Rules.Semantic
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
 	using Microsoft.CodeAnalysis.FindSymbols;
 
-	internal class ClassInstabilityRule : SemanticEvaluationBase
+	internal class ClassInstabilityRule : SemanticEvaluationBase, ICweMapping
 	{
+		public IReadOnlyList<string> CweIds { get; } = new[] { "CWE-1047" };
+		public Iso5055Category Iso5055Category => Iso5055Category.Maintainability;
+
 		public override string ID
 		{
 			get

@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="TooManyMethodParametersRule.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright ï¿½ Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -12,13 +12,17 @@
 
 namespace ArchiMetrics.CodeReview.Rules.Code
 {
+    using System.Collections.Generic;
     using Analysis.Common.CodeReview;
     using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.CSharp;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-	internal class TooManyMethodParametersRule : CodeEvaluationBase
+	internal class TooManyMethodParametersRule : CodeEvaluationBase, ICweMapping
 	{
+		public IReadOnlyList<string> CweIds { get; } = new[] { "CWE-1090" };
+		public Iso5055Category Iso5055Category => Iso5055Category.Maintainability;
+
 		private const int Limit = 5;
 
 		public override string ID

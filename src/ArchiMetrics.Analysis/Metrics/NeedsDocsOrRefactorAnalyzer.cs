@@ -19,6 +19,8 @@ namespace ArchiMetrics.Analysis.Metrics
         private readonly string _rootFolder;
         private readonly int _minimumTokens;
 
+        private static readonly Regex PascalCaseRegex = new Regex(@"([a-z0-9])([A-Z])", RegexOptions.Compiled);
+
         // Weights for composite opacity score
         private readonly double _weightSemanticGap;
         private readonly double _weightComplexity;
@@ -163,7 +165,7 @@ namespace ArchiMetrics.Analysis.Metrics
                     continue;
                 }
 
-                var tokenCount = body.DescendantTokens().Count();
+                var (tokenCount, magicLiteralCount) = CountTokensAndMagicLiterals(body);
                 if (tokenCount < _minimumTokens)
                 {
                     continue;
@@ -181,7 +183,7 @@ namespace ArchiMetrics.Analysis.Metrics
                     BodyText = body.ToFullString(),
                     CyclomaticComplexity = CountComplexity(body),
                     NestingDepth = CountMaxNesting(body),
-                    MagicLiteralCount = CountMagicLiterals(body)
+                    MagicLiteralCount = magicLiteralCount
                 });
             }
         }
@@ -249,38 +251,31 @@ namespace ArchiMetrics.Analysis.Metrics
             return max;
         }
 
-        private static int CountMagicLiterals(SyntaxNode body)
+        private static (int TokenCount, int MagicLiteralCount) CountTokensAndMagicLiterals(SyntaxNode body)
         {
-            var count = 0;
+            var tokenCount = 0;
+            var magicCount = 0;
             foreach (var token in body.DescendantTokens())
             {
+                tokenCount++;
                 switch (token.Kind())
                 {
                     case SyntaxKind.NumericLiteralToken:
-                        // 0 and 1 are not magic
                         if (token.ValueText != "0" && token.ValueText != "1")
                         {
-                            count++;
+                            magicCount++;
                         }
-
                         break;
                     case SyntaxKind.StringLiteralToken:
-                        // Skip empty strings and single-char strings
                         var text = token.ValueText;
-                        if (text.Length > 1)
+                        if (text.Length > 1 && !IsCommonStringLiteral(text))
                         {
-                            // Skip strings that look like format specifiers, separators, etc.
-                            if (!IsCommonStringLiteral(text))
-                            {
-                                count++;
-                            }
+                            magicCount++;
                         }
-
                         break;
                 }
             }
-
-            return count;
+            return (tokenCount, magicCount);
         }
 
         private static bool IsCommonStringLiteral(string text)
@@ -307,30 +302,14 @@ namespace ArchiMetrics.Analysis.Metrics
             }
 
             // Split PascalCase/camelCase: insert space before uppercase letters that follow lowercase
-            var split = Regex.Replace(name, @"([a-z0-9])([A-Z])", "$1 $2");
+            var split = PascalCaseRegex.Replace(name, "$1 $2");
             // Split on underscores
             split = split.Replace('_', ' ');
             return split.ToLowerInvariant().Trim();
         }
 
-        private static double CosineSimilarity(float[] a, float[] b)
-        {
-            if (a.Length != b.Length || a.Length == 0)
-            {
-                return 0.0;
-            }
-
-            double dot = 0, normA = 0, normB = 0;
-            for (var i = 0; i < a.Length; i++)
-            {
-                dot += a[i] * (double)b[i];
-                normA += a[i] * (double)a[i];
-                normB += b[i] * (double)b[i];
-            }
-
-            var denom = Math.Sqrt(normA) * Math.Sqrt(normB);
-            return denom == 0 ? 0.0 : dot / denom;
-        }
+        private static double CosineSimilarity(float[] a, float[] b) =>
+            VectorMath.CosineSimilarity(a, b);
 
         private static double Clamp01(double value)
         {

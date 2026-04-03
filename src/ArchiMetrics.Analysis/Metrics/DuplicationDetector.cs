@@ -34,11 +34,13 @@ namespace ArchiMetrics.Analysis.Metrics
             IEnumerable<SyntaxTree> trees,
             CancellationToken cancellationToken = default)
         {
-            var treeList = trees.ToList();
+            // Extract methods once — both layers share the same instances
+            var extractor = new MethodExtractor(_rootFolder, _minimumTokens);
+            var instances = extractor.Extract(trees);
 
             // Layer 1: AST fingerprinting — fast, exact/renamed clones
-            var fingerprinter = new SyntaxFingerprintAnalyzer(_rootFolder, _minimumTokens);
-            var astClones = fingerprinter.Analyze(treeList);
+            var fingerprinter = new SyntaxFingerprintAnalyzer();
+            var astClones = fingerprinter.Analyze(instances);
 
             if (_embeddingProvider == null)
             {
@@ -61,9 +63,9 @@ namespace ArchiMetrics.Analysis.Metrics
 
             // Layer 2: Embedding similarity — catches semantic clones
             var embeddingAnalyzer = new EmbeddingSimilarityAnalyzer(
-                _embeddingProvider, _rootFolder, _similarityThreshold, _minimumTokens);
+                _embeddingProvider, _similarityThreshold);
             var semanticPairs = await embeddingAnalyzer
-                .Analyze(treeList, detectedKeys, cancellationToken)
+                .Analyze(instances, detectedKeys, cancellationToken)
                 .ConfigureAwait(false);
 
             // Group semantic pairs into clone classes by connected components
@@ -95,6 +97,19 @@ namespace ArchiMetrics.Analysis.Metrics
                 Union(parent, leftKey, rightKey);
             }
 
+            // Pre-build root → pairs mapping in one pass (avoids O(G*P) re-scanning)
+            var pairsByRoot = new Dictionary<string, List<ClonePair>>();
+            foreach (var pair in pairs)
+            {
+                var root = Find(parent, Key(pair.Left));
+                if (!pairsByRoot.TryGetValue(root, out var list))
+                {
+                    list = new List<ClonePair>();
+                    pairsByRoot[root] = list;
+                }
+                list.Add(pair);
+            }
+
             var groups = instanceMap.Keys
                 .GroupBy(k => Find(parent, k))
                 .ToList();
@@ -105,9 +120,10 @@ namespace ArchiMetrics.Analysis.Metrics
                 var instances = group.Select(k => instanceMap[k]).ToList();
                 if (instances.Count < 2 || instances.Count > maxClusterSize) continue;
 
-                var avgSimilarity = pairs
-                    .Where(p => Find(parent, Key(p.Left)) == Find(parent, Key(p.Right)))
-                    .Average(p => p.Similarity);
+                var root = group.Key;
+                var avgSimilarity = pairsByRoot.TryGetValue(root, out var clusterPairs)
+                    ? clusterPairs.Average(p => p.Similarity)
+                    : 0.0;
 
                 result.Add(new CloneClass(CloneType.Semantic, instances, avgSimilarity));
             }

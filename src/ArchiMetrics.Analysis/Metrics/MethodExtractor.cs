@@ -55,8 +55,8 @@ namespace ArchiMetrics.Analysis.Metrics
                 return;
             }
 
-            var tokens = body.DescendantTokens().Count();
-            if (tokens < _minimumTokens)
+            var (normalized, tokenCount) = SyntaxNormalizer.NormalizeWithCount(body);
+            if (tokenCount < _minimumTokens)
             {
                 return;
             }
@@ -65,7 +65,6 @@ namespace ArchiMetrics.Analysis.Metrics
             var lineSpan = location.GetLineSpan();
             var filePath = lineSpan.Path.GetPathRelativeTo(_rootFolder);
             var memberName = GetMemberName(declaration);
-            var normalized = SyntaxNormalizer.Normalize(body);
 
             _instances.Add(new CloneInstance(
                 filePath,

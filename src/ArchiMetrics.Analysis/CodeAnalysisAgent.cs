@@ -6,6 +6,7 @@ namespace ArchiMetrics.Analysis
     using System.Linq;
     using System.Threading;
     using System.Threading.Tasks;
+    using Common.CodeReview;
     using Common.Metrics;
     using Metrics;
     using Microsoft.CodeAnalysis;
@@ -224,6 +225,38 @@ namespace ArchiMetrics.Analysis
         }
 
         /// <summary>
+        /// Returns the methods with the highest cyclomatic complexity across the
+        /// entire solution (or a single project). Each result is a flat
+        /// <see cref="MemberSummary"/> that includes the fully qualified location
+        /// (namespace, type, file, line number), so an agent can jump straight to
+        /// the most complex methods without drilling through the namespace/type tree.
+        /// </summary>
+        public Task<PagedResult<MemberSummary>> GetWorstMethods(
+            string projectName = null,
+            int skip = 0,
+            int take = 20,
+            CancellationToken cancellationToken = default)
+        {
+            return GetWorstMethods(_workspace.CurrentSolution, projectName, skip, take, cancellationToken);
+        }
+
+        public async Task<PagedResult<MemberSummary>> GetWorstMethods(
+            Solution solution,
+            string projectName = null,
+            int skip = 0,
+            int take = 20,
+            CancellationToken cancellationToken = default)
+        {
+            var namespaces = await CalculateAllNamespaces(solution, projectName, cancellationToken).ConfigureAwait(false);
+            var sorted = namespaces
+                .SelectMany(n => n.TypeMetrics.SelectMany(t =>
+                    t.MemberMetrics.Select(m => MemberSummary.From(n.Name, t.Name, m))))
+                .OrderByDescending(m => m.CyclomaticComplexity)
+                .ToList();
+            return PagedResult<MemberSummary>.Create(sorted, skip, take);
+        }
+
+        /// <summary>
         /// Returns the worst-offending types across all namespaces in the solution,
         /// ranked by maintainability index (lowest first). This is a flat,
         /// cross-cutting view that lets an agent jump straight to the most
@@ -253,6 +286,47 @@ namespace ArchiMetrics.Analysis
             return PagedResult<TypeSummary>.Create(sorted, skip, take);
         }
 
+        /// <summary>
+        /// Produces an ISO/IEC 5055-aligned report by running the supplied code review
+        /// rules against the workspace and combining the violations with LOC metrics.
+        /// Does not require an embedding provider — only the rule engine and basic
+        /// metrics are used, so this works on any <see cref="CodeAnalysisAgent"/> instance.
+        /// </summary>
+        /// <param name="inspector">
+        /// A <see cref="NodeReviewer"/> (or other <see cref="INodeInspector"/>) loaded
+        /// with the rules to evaluate. The caller controls which rules are loaded,
+        /// keeping the Analysis project decoupled from the Rules assembly.
+        /// </param>
+        /// <param name="rules">
+        /// The same set of rules passed to the inspector, used to determine CWE coverage.
+        /// </param>
+        public Task<Iso5055Report> GenerateIso5055Report(
+            INodeInspector inspector,
+            IEnumerable<IEvaluation> rules,
+            string projectName = null,
+            CancellationToken cancellationToken = default)
+        {
+            return GenerateIso5055Report(inspector, rules, _workspace.CurrentSolution, projectName, cancellationToken);
+        }
+
+        public async Task<Iso5055Report> GenerateIso5055Report(
+            INodeInspector inspector,
+            IEnumerable<IEvaluation> rules,
+            Solution solution,
+            string projectName = null,
+            CancellationToken cancellationToken = default)
+        {
+            var metricsTask = CalculateAllNamespaces(solution, projectName, cancellationToken);
+            var evaluationsTask = inspector.Inspect(solution, cancellationToken);
+
+            await Task.WhenAll(metricsTask, evaluationsTask).ConfigureAwait(false);
+
+            return Iso5055ReportGenerator.Generate(
+                evaluationsTask.Result,
+                metricsTask.Result,
+                rules);
+        }
+
         public Task<string> GenerateWorkspaceSummary()
         {
             return GenerateWorkspaceSummary(_workspace.CurrentSolution);
@@ -271,14 +345,12 @@ namespace ArchiMetrics.Analysis
                 ? solution.Projects.Where(p => p.Name == projectName)
                 : solution.Projects;
 
-            var results = new List<INamespaceMetric>();
-            foreach (var project in projects)
-            {
-                var metrics = await _metricsCalculator.Calculate(project, solution).ConfigureAwait(false);
-                results.AddRange(metrics);
-            }
+            var tasks = projects
+                .Select(p => _metricsCalculator.Calculate(p, solution))
+                .ToList();
 
-            return results;
+            var allMetrics = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return allMetrics.SelectMany(m => m).ToList();
         }
 
         private async Task<IReadOnlyList<SyntaxTree>> GetSyntaxTrees(
@@ -288,20 +360,13 @@ namespace ArchiMetrics.Analysis
                 ? solution.Projects.Where(p => p.Name == projectName)
                 : solution.Projects;
 
-            var trees = new List<SyntaxTree>();
-            foreach (var project in projects)
-            {
-                foreach (var document in project.Documents)
-                {
-                    var tree = await document.GetSyntaxTreeAsync(cancellationToken).ConfigureAwait(false);
-                    if (tree != null)
-                    {
-                        trees.Add(tree);
-                    }
-                }
-            }
+            var tasks = projects
+                .SelectMany(p => p.Documents)
+                .Select(d => d.GetSyntaxTreeAsync(cancellationToken))
+                .ToList();
 
-            return trees;
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return results.Where(t => t != null).ToList();
         }
     }
 }

@@ -6,27 +6,15 @@ namespace ArchiMetrics.Analysis.Metrics
     using System.Security.Cryptography;
     using System.Text;
     using Common.Metrics;
-    using Microsoft.CodeAnalysis;
 
     internal sealed class SyntaxFingerprintAnalyzer
     {
-        private readonly string _rootFolder;
-        private readonly int _minimumTokens;
 
-        public SyntaxFingerprintAnalyzer(string rootFolder, int minimumTokens = 50)
+        public IReadOnlyList<CloneClass> Analyze(IReadOnlyList<CloneInstance> instances)
         {
-            _rootFolder = rootFolder;
-            _minimumTokens = minimumTokens;
-        }
-
-        public IReadOnlyList<CloneClass> Analyze(IEnumerable<SyntaxTree> trees)
-        {
-            var extractor = new MethodExtractor(_rootFolder, _minimumTokens);
-            var instances = extractor.Extract(trees);
-
             var groups = instances
                 .GroupBy(i => ComputeHash(i.NormalizedText))
-                .Where(g => g.Count() > 1)
+                .Where(g => g.Skip(1).Any())
                 .ToList();
 
             return groups
@@ -47,11 +35,8 @@ namespace ArchiMetrics.Analysis.Metrics
 
         private static string ComputeHash(string text)
         {
-            using (var sha = SHA256.Create())
-            {
-                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(text));
-                return Convert.ToBase64String(bytes);
-            }
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(text));
+            return Convert.ToBase64String(bytes);
         }
     }
 }

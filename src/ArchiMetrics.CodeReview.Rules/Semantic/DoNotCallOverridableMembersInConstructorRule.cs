@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="DoNotCallOverridableMembersInConstructorRule.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright ï¿½ Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -12,6 +12,7 @@
 
 namespace ArchiMetrics.CodeReview.Rules.Semantic
 {
+	using System.Collections.Generic;
 	using System.Linq;
 	using System.Threading.Tasks;
 	using Analysis.Common.CodeReview;
@@ -19,8 +20,11 @@ namespace ArchiMetrics.CodeReview.Rules.Semantic
 	using Microsoft.CodeAnalysis.CSharp;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-	internal class DoNotCallOverridableMembersInConstructorRule : SemanticEvaluationBase
+	internal class DoNotCallOverridableMembersInConstructorRule : SemanticEvaluationBase, ICweMapping
 	{
+		public IReadOnlyList<string> CweIds { get; } = new[] { "CWE-665" };
+		public Iso5055Category Iso5055Category => Iso5055Category.Reliability;
+
 		public override string ID
 		{
 			get

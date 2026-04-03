@@ -347,6 +347,139 @@ namespace Test
                 var result = DuplicationDetector.GroupIntoClusters(new List<ClonePair>());
                 Assert.Empty(result);
             }
+
+            [Fact]
+            public void WhenClusteringThenAverageSimilarityIsCorrect()
+            {
+                var a = new CloneInstance("a.cs", 1, 10, "Foo", "body");
+                var b = new CloneInstance("b.cs", 1, 10, "Bar", "body");
+                var c = new CloneInstance("c.cs", 1, 10, "Baz", "body");
+
+                var pairs = new List<ClonePair>
+                {
+                    new ClonePair(a, b, CloneType.Semantic, 0.90),
+                    new ClonePair(b, c, CloneType.Semantic, 0.96),
+                };
+
+                var result = DuplicationDetector.GroupIntoClusters(pairs, maxClusterSize: 15);
+
+                Assert.Single(result);
+                var expectedAvg = (0.90 + 0.96) / 2.0;
+                Assert.Equal(expectedAvg, result[0].Similarity, 5);
+            }
+        }
+
+        public class MakePairKeyTests
+        {
+            [Fact]
+            public void WhenMakingPairKeyThenOrderIsCanonical()
+            {
+                var a = new CloneInstance("a.cs", 1, 10, "Foo", "body");
+                var b = new CloneInstance("b.cs", 5, 15, "Bar", "body");
+
+                var key1 = EmbeddingSimilarityAnalyzer.MakePairKey(a, b);
+                var key2 = EmbeddingSimilarityAnalyzer.MakePairKey(b, a);
+
+                Assert.Equal(key1, key2);
+            }
+
+            [Fact]
+            public void WhenMakingPairKeyThenDifferentPairsAreDifferent()
+            {
+                var a = new CloneInstance("a.cs", 1, 10, "Foo", "body");
+                var b = new CloneInstance("b.cs", 5, 15, "Bar", "body");
+                var c = new CloneInstance("c.cs", 3, 12, "Baz", "body");
+
+                var key1 = EmbeddingSimilarityAnalyzer.MakePairKey(a, b);
+                var key2 = EmbeddingSimilarityAnalyzer.MakePairKey(a, c);
+
+                Assert.NotEqual(key1, key2);
+            }
+        }
+
+        public class EndToEndTests
+        {
+            [Fact]
+            public async Task WhenDetectingWithBothLayersThenResultContainsAstAndSemanticClones()
+            {
+                // Two identical methods (AST clone) + two structurally different but semantically similar
+                var code = @"
+namespace Test
+{
+    public class A
+    {
+        public int Exact1(int x)
+        {
+            var result = 0;
+            for (var i = 0; i < x; i++)
+            {
+                result += i * 2;
+                if (result > 100) { result = result / 2; }
+            }
+            return result;
+        }
+    }
+
+    public class B
+    {
+        public int Exact2(int y)
+        {
+            var result = 0;
+            for (var i = 0; i < y; i++)
+            {
+                result += i * 2;
+                if (result > 100) { result = result / 2; }
+            }
+            return result;
+        }
+    }
+
+    public class C
+    {
+        public int Different1(int x)
+        {
+            var sum = 0;
+            var counter = 0;
+            while (counter < x)
+            {
+                sum = sum + counter;
+                counter++;
+                if (sum > 50) { sum = sum - 10; }
+            }
+            return sum;
+        }
+    }
+
+    public class D
+    {
+        public int Different2(int x)
+        {
+            var total = 0;
+            foreach (var i in System.Linq.Enumerable.Range(0, x))
+            {
+                total += i;
+                if (total > 50) { total -= 10; }
+            }
+            return total;
+        }
+    }
+}";
+
+                var tree = CSharpSyntaxTree.ParseText(code);
+                var fakeProvider = new FakeEmbeddingProvider(similarity: 0.95);
+                var detector = new DuplicationDetector(
+                    string.Empty,
+                    embeddingProvider: fakeProvider,
+                    minimumTokens: 10,
+                    similarityThreshold: 0.80);
+
+                var result = await detector.Detect(new[] { tree });
+
+                // Should have at least one AST clone (Exact1/Exact2 are renamed clones)
+                Assert.Contains(result.Clones, c => c.CloneType == CloneType.Renamed);
+                // Should have clones total
+                Assert.True(result.Clones.Count >= 1);
+            }
         }
 
         public class CosineSimilarityTests

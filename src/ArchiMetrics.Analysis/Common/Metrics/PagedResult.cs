@@ -2,7 +2,6 @@ namespace ArchiMetrics.Analysis.Common.Metrics
 {
     using System;
     using System.Collections.Generic;
-    using System.Linq;
 
     public class PagedResult<T>
     {
@@ -28,7 +27,15 @@ namespace ArchiMetrics.Analysis.Common.Metrics
             take = take > 0 ? Math.Min(take, MaxPageSize) : MaxPageSize;
 
             var totalCount = sorted.Count;
-            var items = sorted.Skip(skip).Take(take).ToList();
+            var actualSkip = Math.Min(skip, totalCount);
+            var actualTake = Math.Min(take, totalCount - actualSkip);
+
+            var items = new List<T>(actualTake);
+            for (var i = actualSkip; i < actualSkip + actualTake; i++)
+            {
+                items.Add(sorted[i]);
+            }
+
             return new PagedResult<T>(items, totalCount);
         }
     }

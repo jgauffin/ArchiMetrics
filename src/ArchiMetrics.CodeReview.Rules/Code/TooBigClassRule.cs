@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="TooBigClassRule.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright ï¿½ Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -12,13 +12,17 @@
 
 namespace ArchiMetrics.CodeReview.Rules.Code
 {
+    using System.Collections.Generic;
     using Analysis.Common.CodeReview;
     using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.CSharp;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-	internal class TooBigClassRule : CodeEvaluationBase
+	internal class TooBigClassRule : CodeEvaluationBase, ICweMapping
 	{
+		public IReadOnlyList<string> CweIds { get; } = new[] { "CWE-1080" };
+		public Iso5055Category Iso5055Category => Iso5055Category.Maintainability;
+
 		private const int Limit = 300;
 
 		public override string ID

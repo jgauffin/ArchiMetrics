@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="CodeEvaluationBase.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright ï¿½ Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -45,6 +45,12 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 				result.QualityAttribute = QualityAttribute;
 				result.ImpactLevel = ImpactLevel;
 				result.FilePath = filePath;
+
+				if (this is ICweMapping cweMapping)
+				{
+					result.CweIds = cweMapping.CweIds;
+					result.Iso5055Category = cweMapping.Iso5055Category;
+				}
 			}
 
 			return result;
