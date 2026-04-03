@@ -67,21 +67,44 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 		protected override EvaluationResult EvaluateImpl(SyntaxNode node)
 		{
 			var classDeclaration = (ClassDeclarationSyntax)node;
-			if (classDeclaration.BaseList != null && classDeclaration.BaseList.Types.Any(t => (t.Type is IdentifierNameSyntax) && ((IdentifierNameSyntax)t.Type).Identifier.ValueText.Contains("IDisposable")))
+			if (classDeclaration.BaseList == null
+				|| !classDeclaration.BaseList.Types.Any(t => t.Type is IdentifierNameSyntax id && id.Identifier.ValueText.Contains("IDisposable")))
 			{
-				var methods = classDeclaration.ChildNodes().OfType<MethodDeclarationSyntax>()
-					.Where(m => m.Identifier.ValueText == "Dispose")
-					.Where(m =>
-						{
-							var predefinedType = SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword));
-							return m.ParameterList.Parameters.Count == 0
-										   || (m.ParameterList.Parameters.Count == 1 && m.ParameterList.Parameters[0].Type.EquivalentTo(predefinedType));
-						}).AsArray();
+				return null;
+			}
+
+			var isSealed = classDeclaration.Modifiers.Any(SyntaxKind.SealedKeyword);
+
+			var disposeMethods = classDeclaration.ChildNodes().OfType<MethodDeclarationSyntax>()
+				.Where(m => m.Identifier.ValueText == "Dispose")
+				.Where(m =>
+					{
+						var predefinedType = SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.BoolKeyword));
+						return m.ParameterList.Parameters.Count == 0
+									   || (m.ParameterList.Parameters.Count == 1 && m.ParameterList.Parameters[0].Type.EquivalentTo(predefinedType));
+					}).AsArray();
+
+			if (isSealed)
+			{
+				// Sealed classes don't need the full virtual Dispose pattern.
+				// A parameterless Dispose() that calls GC.SuppressFinalize(this) is sufficient.
+				var parameterlessDispose = disposeMethods.FirstOrDefault(m => m.ParameterList.Parameters.Count == 0);
+				if (parameterlessDispose == null || !InvokesSuppressFinalize(parameterlessDispose))
+				{
+					return new EvaluationResult
+					{
+						Snippet = node.ToFullString()
+					};
+				}
+			}
+			else
+			{
+				// Unsealed classes need the full pattern: Dispose(), Dispose(bool), and a finalizer.
 				var destructor = classDeclaration
 					.ChildNodes()
 					.OfType<DestructorDeclarationSyntax>()
-					.FirstOrDefault(d => d.Body.ChildNodes().Any(InvokesDispose));
-				if (methods.Length < 2 || destructor == null)
+					.FirstOrDefault(d => d.Body != null && d.Body.ChildNodes().Any(InvokesDispose));
+				if (disposeMethods.Length < 2 || destructor == null)
 				{
 					return new EvaluationResult
 					{
@@ -91,6 +114,18 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 			}
 
 			return null;
+		}
+
+		private static bool InvokesSuppressFinalize(MethodDeclarationSyntax method)
+		{
+			// Look for GC.SuppressFinalize(...) anywhere in the method body.
+			return method.Body != null && method.Body.DescendantNodes()
+				.OfType<InvocationExpressionSyntax>()
+				.Any(inv =>
+					inv.Expression is MemberAccessExpressionSyntax memberAccess
+					&& memberAccess.Name.Identifier.ValueText == "SuppressFinalize"
+					&& memberAccess.Expression is IdentifierNameSyntax identifierName
+					&& identifierName.Identifier.ValueText == "GC");
 		}
 
 		private bool InvokesDispose(SyntaxNode node)

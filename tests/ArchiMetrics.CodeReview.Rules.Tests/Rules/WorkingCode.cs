@@ -38,6 +38,35 @@ private void SomeEventHandler(object sender, EventArgs e)
 }",
                 typeof(MissingEventHandlerDetachmentRule)
             };
+            // Static classes cannot leak event subscriptions
+            yield return new object[]
+            {
+                @"public static class TextFormatter
+			{
+				public static string Format(string input)
+				{
+					var result = """";
+					result += input.Trim();
+					return result;
+				}
+			}",
+                typeof(MissingEventHandlerDetachmentRule)
+            };
+            // Non-event += (string concatenation) should not trigger
+            yield return new object[]
+            {
+                @"public class NugetTools
+			{
+				public string BuildArgs()
+				{
+					var args = """";
+					args += "" --source nuget.org"";
+					args += "" --verbosity quiet"";
+					return args;
+				}
+			}",
+                typeof(MissingEventHandlerDetachmentRule)
+            };
             yield return new object[]
             {
                 @"public class InnerClass : IDisposable
@@ -56,6 +85,18 @@ private void SomeEventHandler(object sender, EventArgs e)
 			{
 			}
 		}",
+                typeof(IncorrectDisposableImplementation)
+            };
+            // Sealed classes only need Dispose() + GC.SuppressFinalize(this)
+            yield return new object[]
+            {
+                @"public sealed class SealedDisposable : IDisposable
+			{
+				public void Dispose()
+				{
+					GC.SuppressFinalize(this);
+				}
+			}",
                 typeof(IncorrectDisposableImplementation)
             };
             yield return new object[]

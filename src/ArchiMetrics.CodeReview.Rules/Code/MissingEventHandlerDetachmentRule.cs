@@ -85,10 +85,19 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 		protected override EvaluationResult EvaluateImpl(SyntaxNode node)
 		{
 			var declarationSyntax = (TypeDeclarationSyntax)node;
+
+			// Static classes cannot hold instance state or leak event subscriptions.
+			if (declarationSyntax is ClassDeclarationSyntax classDecl
+				&& classDecl.Modifiers.Any(SyntaxKind.StaticKeyword))
+			{
+				return null;
+			}
+
 			var addAssignments = declarationSyntax
 				.DescendantNodes()
 				.Where(x => x.Kind() == SyntaxKind.AddAssignmentExpression)
 				.Cast<AssignmentExpressionSyntax>()
+				.Where(IsLikelyEventSubscription)
 				.AsArray();
 			var subtractAssignments = declarationSyntax.DescendantNodes()
 				.Where(x => x.Kind() == SyntaxKind.SubtractAssignmentExpression)
@@ -102,6 +111,11 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 				var unmatched = assignmentExpressionSyntaxes.Where(x => !MatchingAssignmentExpressionExists(x, subtractAssignments));
 				var snippet = string.Join(Environment.NewLine, unmatched.Select(x => x.ToFullString()));
 
+				if (string.IsNullOrWhiteSpace(snippet))
+				{
+					return null;
+				}
+
 				return new EvaluationResult
 						   {
 							   Snippet = snippet
@@ -109,6 +123,45 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 			}
 
 			return null;
+		}
+
+		/// <summary>
+		/// Determines whether the right-hand side of a += expression is likely a delegate
+		/// or method group (i.e., an event subscription). Event handlers are assigned as
+		/// bare method names (<c>SomeEvent += Handler</c>), member accesses
+		/// (<c>SomeEvent += obj.Handler</c>), lambda expressions, or explicit delegate
+		/// constructors (<c>new EventHandler(Handler)</c>). Anything else — invocations,
+		/// literals, arithmetic — is not an event subscription.
+		/// </summary>
+		private static bool IsLikelyEventSubscription(AssignmentExpressionSyntax assignment)
+		{
+			var right = assignment.Right;
+
+			// Method group: SomeEvent += Handler
+			if (right is IdentifierNameSyntax)
+			{
+				return true;
+			}
+
+			// Method group via member access: SomeEvent += obj.Handler
+			if (right is MemberAccessExpressionSyntax)
+			{
+				return true;
+			}
+
+			// Lambda: SomeEvent += (s, e) => { ... }
+			if (right is ParenthesizedLambdaExpressionSyntax || right is SimpleLambdaExpressionSyntax)
+			{
+				return true;
+			}
+
+			// Delegate constructor: SomeEvent += new EventHandler(Handler)
+			if (right is ObjectCreationExpressionSyntax)
+			{
+				return true;
+			}
+
+			return false;
 		}
 
 		private bool MatchingAssignmentExpressionExists(

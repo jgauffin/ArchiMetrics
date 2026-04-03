@@ -38,6 +38,8 @@ private void SomeEventHandler(object sender, EventArgs e)
                 typeof(MissingEventHandlerDetachmentRule)
             };
             yield return new object[] { @"public class SomeClass : IDisposable { public void Dispose(){ }}", typeof(IncorrectDisposableImplementation) };
+            // Sealed class implementing IDisposable without GC.SuppressFinalize
+            yield return new object[] { @"public sealed class SealedClass : IDisposable { public void Dispose(){ }}", typeof(IncorrectDisposableImplementation) };
             yield return new object[]
             {
                 @"private void ApplicationInitializationStartup()
