@@ -284,51 +284,50 @@ namespace ArchiMetrics.Analysis
 
         private async Task<Tuple<Compilation, IEnumerable<IMemberMetric>>> CalculateMemberMetrics(Compilation compilation, TypeDeclaration typeNodes, Solution solution)
         {
+            // Phase 1: Sequential — ensure all syntax trees are in the compilation.
+            // VerifyCompilation mutates the compilation (Roslyn creates new immutable instances),
+            // so this step must be sequential to build the complete compilation.
             var comp = compilation;
-            var metrics = typeNodes.SyntaxNodes
-                .Select(async info =>
-                {
-                    var tuple = await VerifyCompilation(comp, info).ConfigureAwait(false);
-                    var semanticModel = tuple.Item2;
-                    comp = tuple.Item1;
-                    var calculator = new MemberMetricsCalculator(semanticModel, solution, solution?.FilePath.GetParentFolder(), _memberDocumentationFactory);
+            var verified = new List<(TypeDeclarationSyntaxInfo Info, SemanticModel Model)>();
+            foreach (var info in typeNodes.SyntaxNodes)
+            {
+                var tuple = await VerifyCompilation(comp, info).ConfigureAwait(false);
+                comp = tuple.Item1;
+                verified.Add((tuple.Item3, tuple.Item2));
+            }
 
-                    return await calculator.Calculate(info).ConfigureAwait(false);
-                });
-            var results = await Task.WhenAll(metrics).ConfigureAwait(false);
+            // Phase 2: Parallel — calculate metrics against the now-stable compilation.
+            var tasks = verified.Select(async v =>
+            {
+                var calculator = new MemberMetricsCalculator(v.Model, solution, solution?.FilePath.GetParentFolder(), _memberDocumentationFactory);
+                return await calculator.Calculate(v.Info).ConfigureAwait(false);
+            });
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
             return new Tuple<Compilation, IEnumerable<IMemberMetric>>(comp, results.SelectMany(x => x).AsArray());
         }
 
         private async Task<Tuple<Compilation, IEnumerable<ITypeMetric>>> CalculateTypeMetrics(Compilation compilation, NamespaceDeclaration namespaceNodes, Solution solution)
         {
             var comp = compilation;
-            var tasks = GetTypeDeclarations(namespaceNodes)
-                .Select(async typeNodes =>
-                    {
-                        var tuple = await CalculateMemberMetrics(comp, typeNodes, solution).ConfigureAwait(false);
-                        var metrics = tuple.Item2;
-                        comp = tuple.Item1;
-                        return new
-                        {
-                            comp,
-                            typeNodes,
-                            solution,
-                            memberMetrics = metrics
-                        };
-                    })
-                    .AsArray();
-            var data = await Task.WhenAll(tasks).ConfigureAwait(false);
-            var typeMetricsTasks = data
+            var typeDeclarations = GetTypeDeclarations(namespaceNodes).AsArray();
+
+            // Phase 1: Sequential — verify all type syntax trees are in the compilation.
+            // Each CalculateMemberMetrics call may add trees; the returned compilation
+            // accumulates them so subsequent types see a complete compilation.
+            var memberData = new List<(TypeDeclaration TypeNodes, IEnumerable<IMemberMetric> Metrics)>();
+            foreach (var typeNodes in typeDeclarations)
+            {
+                var tuple = await CalculateMemberMetrics(comp, typeNodes, solution).ConfigureAwait(false);
+                comp = tuple.Item1;
+                memberData.Add((typeNodes, tuple.Item2));
+            }
+
+            // Phase 2: Parallel — calculate type-level metrics with the final stable compilation.
+            var typeMetricsTasks = memberData
                 .Select(async item =>
                 {
-                    var tuple = await CalculateTypeMetrics(item.solution, item.comp, item.typeNodes, item.memberMetrics).ConfigureAwait(false);
-                    if (tuple == null)
-                    {
-                        return null;
-                    }
-
-                    comp = tuple.Item1;
-                    return tuple.Item2;
+                    var tuple = await CalculateTypeMetrics(solution, comp, item.TypeNodes, item.Metrics).ConfigureAwait(false);
+                    return tuple?.Item2;
                 })
                 .AsArray();
 

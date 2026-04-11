@@ -1,6 +1,7 @@
 namespace ArchiMetrics.Analysis.Metrics
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Linq;
     using System.Threading;
@@ -20,6 +21,9 @@ namespace ArchiMetrics.Analysis.Metrics
             _similarityThreshold = similarityThreshold;
         }
 
+        // Below this instance count the overhead of Parallel.For outweighs the benefit
+        private const int ParallelThreshold = 64;
+
         public async Task<IReadOnlyList<ClonePair>> Analyze(
             IReadOnlyList<CloneInstance> instances,
             ISet<string> alreadyDetectedKeys,
@@ -33,6 +37,19 @@ namespace ArchiMetrics.Analysis.Metrics
             var texts = instances.Select(i => i.NormalizedText).ToList();
             var embeddings = await _embeddingProvider.GetEmbeddings(texts, cancellationToken).ConfigureAwait(false);
 
+            if (instances.Count < ParallelThreshold)
+            {
+                return CompareSequential(instances, embeddings, alreadyDetectedKeys);
+            }
+
+            return CompareParallel(instances, embeddings, alreadyDetectedKeys);
+        }
+
+        private List<ClonePair> CompareSequential(
+            IReadOnlyList<CloneInstance> instances,
+            IReadOnlyList<float[]> embeddings,
+            ISet<string> alreadyDetectedKeys)
+        {
             var pairs = new List<ClonePair>();
 
             for (var i = 0; i < instances.Count; i++)
@@ -54,6 +71,35 @@ namespace ArchiMetrics.Analysis.Metrics
             }
 
             return pairs;
+        }
+
+        private List<ClonePair> CompareParallel(
+            IReadOnlyList<CloneInstance> instances,
+            IReadOnlyList<float[]> embeddings,
+            ISet<string> alreadyDetectedKeys)
+        {
+            var bag = new ConcurrentBag<ClonePair>();
+            var threshold = _similarityThreshold;
+
+            Parallel.For(0, instances.Count, i =>
+            {
+                for (var j = i + 1; j < instances.Count; j++)
+                {
+                    var key = MakePairKey(instances[i], instances[j]);
+                    if (alreadyDetectedKeys.Contains(key))
+                    {
+                        continue;
+                    }
+
+                    var similarity = CosineSimilarity(embeddings[i], embeddings[j]);
+                    if (similarity >= threshold)
+                    {
+                        bag.Add(new ClonePair(instances[i], instances[j], CloneType.Semantic, similarity));
+                    }
+                }
+            });
+
+            return bag.ToList();
         }
 
         internal static string MakePairKey(CloneInstance a, CloneInstance b)

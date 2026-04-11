@@ -171,6 +171,10 @@ namespace ArchiMetrics.Analysis.Metrics
                     continue;
                 }
 
+                // Single recursive pass for both complexity and nesting depth,
+                // instead of two separate tree walks
+                var (complexity, nestingDepth) = AnalyzeComplexityAndNesting(body);
+
                 var lineSpan = node.GetLocation().GetLineSpan();
                 var filePath = lineSpan.Path.GetPathRelativeTo(_rootFolder);
 
@@ -181,49 +185,28 @@ namespace ArchiMetrics.Analysis.Metrics
                     LineNumber = lineSpan.StartLinePosition.Line,
                     EndLineNumber = lineSpan.EndLinePosition.Line,
                     BodyText = body.ToFullString(),
-                    CyclomaticComplexity = CountComplexity(body),
-                    NestingDepth = CountMaxNesting(body),
+                    CyclomaticComplexity = complexity,
+                    NestingDepth = nestingDepth,
                     MagicLiteralCount = magicLiteralCount
                 });
             }
         }
 
-        private static int CountComplexity(SyntaxNode body)
+        private static (int Complexity, int NestingDepth) AnalyzeComplexityAndNesting(SyntaxNode body)
         {
-            var cc = 1;
-            foreach (var node in body.DescendantNodesAndSelf())
-            {
-                switch (node.Kind())
-                {
-                    case SyntaxKind.IfStatement:
-                    case SyntaxKind.WhileStatement:
-                    case SyntaxKind.ForStatement:
-                    case SyntaxKind.ForEachStatement:
-                    case SyntaxKind.CaseSwitchLabel:
-                    case SyntaxKind.CatchClause:
-                    case SyntaxKind.ConditionalExpression:
-                    case SyntaxKind.CoalesceExpression:
-                    case SyntaxKind.LogicalAndExpression:
-                    case SyntaxKind.LogicalOrExpression:
-                        cc++;
-                        break;
-                }
-            }
-
-            return cc;
+            var complexity = 1;
+            var maxNesting = 0;
+            VisitForComplexityAndNesting(body, 0, ref complexity, ref maxNesting);
+            return (complexity, maxNesting);
         }
 
-        private static int CountMaxNesting(SyntaxNode body)
+        private static void VisitForComplexityAndNesting(SyntaxNode node, int nestingDepth, ref int complexity, ref int maxNesting)
         {
-            return CountNesting(body, 0);
-        }
-
-        private static int CountNesting(SyntaxNode node, int depth)
-        {
-            var max = depth;
             foreach (var child in node.ChildNodes())
             {
-                var childDepth = depth;
+                var childNesting = nestingDepth;
+
+                // Nesting-contributing constructs
                 switch (child.Kind())
                 {
                     case SyntaxKind.IfStatement:
@@ -237,18 +220,34 @@ namespace ArchiMetrics.Analysis.Metrics
                     case SyntaxKind.CatchClause:
                     case SyntaxKind.UsingStatement:
                     case SyntaxKind.LockStatement:
-                        childDepth++;
+                        childNesting++;
                         break;
                 }
 
-                var nested = CountNesting(child, childDepth);
-                if (nested > max)
+                if (childNesting > maxNesting)
                 {
-                    max = nested;
+                    maxNesting = childNesting;
                 }
-            }
 
-            return max;
+                // Complexity-contributing constructs
+                switch (child.Kind())
+                {
+                    case SyntaxKind.IfStatement:
+                    case SyntaxKind.WhileStatement:
+                    case SyntaxKind.ForStatement:
+                    case SyntaxKind.ForEachStatement:
+                    case SyntaxKind.CaseSwitchLabel:
+                    case SyntaxKind.CatchClause:
+                    case SyntaxKind.ConditionalExpression:
+                    case SyntaxKind.CoalesceExpression:
+                    case SyntaxKind.LogicalAndExpression:
+                    case SyntaxKind.LogicalOrExpression:
+                        complexity++;
+                        break;
+                }
+
+                VisitForComplexityAndNesting(child, childNesting, ref complexity, ref maxNesting);
+            }
         }
 
         private static (int TokenCount, int MagicLiteralCount) CountTokensAndMagicLiterals(SyntaxNode body)
