@@ -1,4 +1,4 @@
-﻿// --------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------
 // <copyright file="MetricsCalculationPerformanceTest.cs" company="Reimers.dk">
 //   Copyright © Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
@@ -23,8 +23,16 @@ namespace ArchiMetrics.Analysis.Tests
     using Microsoft.CodeAnalysis.MSBuild;
     using Xunit;
 
+    /// <summary>
+    /// Guards the cost of calculating metrics over a real solution. See
+    /// <c>RuleEvaluationPerformanceTest</c> for why these live behind the Performance category.
+    /// </summary>
+    [Trait("Category", "Performance")]
     public class MetricsCalculationPerformanceTest
     {
+        private const double MaxAverageSeconds = 30.0;
+        private const int Iterations = 3;
+
         private readonly ProjectMetricsCalculator _calculator;
 
         public MetricsCalculationPerformanceTest()
@@ -40,15 +48,17 @@ namespace ArchiMetrics.Analysis.Tests
                 var path = @"..\..\..\..\..\archimetrics.sln".GetLowerCaseFullPath();
                 var solution = await workspace.OpenSolutionAsync(path);
                 var durations = new List<double>();
-                for (var i = 0; i < 5; i++)
+                for (var i = 0; i < Iterations; i++)
                 {
                     var sw = Stopwatch.StartNew();
-                    PerformReview(solution).Wait();
+                    await PerformReview(solution);
                     sw.Stop();
                     durations.Add(sw.Elapsed.TotalSeconds);
                 }
 
-                Assert.True(durations.Average() < 90.0);
+                Assert.True(
+                    durations.Average() < MaxAverageSeconds,
+                    $"Average solution analysis took {durations.Average():F1}s, expected under {MaxAverageSeconds}s. Runs: {string.Join(", ", durations.Select(x => $"{x:F1}s"))}");
             }
         }
 
@@ -60,15 +70,17 @@ namespace ArchiMetrics.Analysis.Tests
                 var path = @"..\..\..\..\..\src\ArchiMetrics.Analysis\ArchiMetrics.Analysis.csproj".GetLowerCaseFullPath();
                 var project = await workspace.OpenProjectAsync(path);
                 var durations = new List<double>();
-                for (var i = 0; i < 5; i++)
+                for (var i = 0; i < Iterations; i++)
                 {
                     var sw = Stopwatch.StartNew();
-                    PerformReview(project).Wait();
+                    await PerformReview(project);
                     sw.Stop();
                     durations.Add(sw.Elapsed.TotalSeconds);
                 }
 
-                Assert.True(durations.Average() < 90.0);
+                Assert.True(
+                    durations.Average() < MaxAverageSeconds,
+                    $"Average project analysis took {durations.Average():F1}s, expected under {MaxAverageSeconds}s. Runs: {string.Join(", ", durations.Select(x => $"{x:F1}s"))}");
             }
         }
 

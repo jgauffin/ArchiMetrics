@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Opt-in settings for running only the performance tests. Pass this file to "dotnet test" with the
+  settings switch:
+
+      dotnet test ArchiMetrics.sln [settings switch] perf.runsettings
+
+  A settings file passed on the command line replaces the one the projects reference by default,
+  which is why this works where an extra command line filter would not: command line filters are
+  combined with the filter in the settings file, so asking for the Performance category while the
+  default settings exclude it matches nothing at all.
+
+  (The switch is spelled out rather than written literally because an XML comment may not contain
+  two consecutive dashes.)
+-->
+<RunSettings>
+  <RunConfiguration>
+    <TestCaseFilter>Category=Performance</TestCaseFilter>
+  </RunConfiguration>
+</RunSettings>

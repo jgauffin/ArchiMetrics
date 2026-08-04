@@ -1,4 +1,4 @@
-﻿// --------------------------------------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------------------------------------
 // <copyright file="ReferenceRepository.cs" company="Reimers.dk">
 //   Copyright © Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
@@ -12,6 +12,7 @@
 
 namespace ArchiMetrics.Analysis.ReferenceResolvers
 {
+	using System;
 	using System.Collections.Concurrent;
 	using System.Collections.Generic;
 	using System.Linq;
@@ -19,6 +20,23 @@ namespace ArchiMetrics.Analysis.ReferenceResolvers
 	using Common;
 	using Microsoft.CodeAnalysis;
 
+	/// <summary>
+	/// A reverse index of "which code refers to this symbol?", built once for a whole solution.
+	/// <para>
+	/// Answering that question on demand means asking Roslyn to bind the solution again for every
+	/// symbol, which is quadratic: a few hundred classes times a few hundred documents. Binding
+	/// every node exactly once up front and remembering the answers turns each later question into
+	/// a dictionary lookup, which is the difference between minutes and seconds for a real
+	/// solution.
+	/// </para>
+	/// <para>
+	/// Callers must await <see cref="EnsureScanned"/> before calling <see cref="Get"/>. Get is a
+	/// plain synchronous read on purpose: an earlier version blocked inside Get, and because every
+	/// rule performs thousands of lookups, those blocked threads exhausted the thread pool and the
+	/// analysis appeared to hang. Waiting is now something the caller does once, asynchronously,
+	/// rather than something every lookup does implicitly.
+	/// </para>
+	/// </summary>
 	public class ReferenceRepository : IProvider<ISymbol, IEnumerable<ReferenceLocation>>
 	{
 		private readonly ConcurrentDictionary<ISymbol, IEnumerable<ReferenceLocation>> _resolvedReferences = new ConcurrentDictionary<ISymbol, IEnumerable<ReferenceLocation>>();
@@ -29,10 +47,22 @@ namespace ArchiMetrics.Analysis.ReferenceResolvers
 			_scanTask = Scan(solution);
 		}
 
+		/// <summary>
+		/// Completes once the solution has been indexed. Await this before the first
+		/// <see cref="Get"/>; afterwards it completes synchronously, so callers pay nothing.
+		/// </summary>
+		public Task EnsureScanned()
+		{
+			return _scanTask;
+		}
+
+		/// <summary>
+		/// Returns the known references for a symbol. Only meaningful after
+		/// <see cref="EnsureScanned"/> has completed - before that the index is still filling and
+		/// this will under-report.
+		/// </summary>
 		public IEnumerable<ReferenceLocation> Get(ISymbol key)
 		{
-			_scanTask.Wait();
-
 			IEnumerable<ReferenceLocation> locations;
 			return _resolvedReferences.TryGetValue(key, out locations)
 				? locations
@@ -59,15 +89,37 @@ namespace ArchiMetrics.Analysis.ReferenceResolvers
 		{
 			var roots = await GetDocData(solution).ConfigureAwait(false);
 
-			var groups = from root in roots
-						 let compilation = root.Compilation
-						 from syntaxNode in root.DocRoots
-						 from @group in compilation.Resolve(syntaxNode)
-						 select @group;
+			var documents = roots
+				.SelectMany(data => data.DocRoots.Select(docRoot => new { data.Compilation, Root = docRoot }))
+				.AsArray();
 
-			foreach (var @group in groups)
+			// Binding is the expensive half of the work and each document is independent, so it is
+			// spread across cores. Results accumulate into queues rather than arrays: appending to
+			// a queue is O(1), whereas the previous "concat into a new array" grew quadratically
+			// for symbols referenced from many documents - exactly the widely used types that
+			// dominate a real solution.
+			var pending = new ConcurrentDictionary<ISymbol, ConcurrentQueue<ReferenceLocation>>();
+
+			await Parallel.ForEachAsync(
+				documents,
+				new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+				(document, _) =>
+				{
+					foreach (var @group in document.Compilation.Resolve(document.Root))
+					{
+						var locations = pending.GetOrAdd(@group.Key, _ => new ConcurrentQueue<ReferenceLocation>());
+						foreach (var location in @group)
+						{
+							locations.Enqueue(location);
+						}
+					}
+
+					return ValueTask.CompletedTask;
+				}).ConfigureAwait(false);
+
+			foreach (var entry in pending)
 			{
-				_resolvedReferences.AddOrUpdate(@group.Key, @group.AsArray(), (s, r) => r.Concat(@group).AsArray());
+				_resolvedReferences[entry.Key] = entry.Value.AsArray();
 			}
 		}
 

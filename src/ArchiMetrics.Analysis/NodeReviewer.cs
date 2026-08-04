@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="NodeReviewer.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -13,6 +13,7 @@
 namespace ArchiMetrics.Analysis
 {
     using System;
+    using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Diagnostics;
     using System.Linq;
@@ -46,14 +47,35 @@ namespace ArchiMetrics.Analysis
                 return Enumerable.Empty<EvaluationResult>();
             }
 
-            var dataTasks = from project in solution.Projects
-                            where project.HasDocuments
-                            let compilation = project.GetCompilationAsync(cancellationToken)
-                            from doc in project.Documents
-                            let root = doc.SupportsSyntaxTree ? doc.GetSyntaxRootAsync(cancellationToken) : Task.FromResult<SyntaxNode>(null)
-                            select GetInspections(project.FilePath, project.Name, compilation, root, solution);
+            // Build the shared reference index before fanning out. Every semantic rule queries it,
+            // so if the documents start first they all queue up behind a scan that is competing
+            // with them for the same threads. Warming it once means the lookups that follow are
+            // already-completed awaits.
+            await solution.WarmReferenceIndex().ConfigureAwait(false);
 
-            var results = await Task.WhenAll(dataTasks).ConfigureAwait(false);
+            var documents = (from project in solution.Projects
+                             where project.HasDocuments
+                             let compilation = project.GetCompilationAsync(cancellationToken)
+                             from doc in project.Documents
+                             let root = doc.SupportsSyntaxTree ? doc.GetSyntaxRootAsync(cancellationToken) : Task.FromResult<SyntaxNode>(null)
+                             select new { project.FilePath, project.Name, compilation, root }).AsArray();
+
+            // Bounded rather than one task per document: a large solution has hundreds of
+            // documents, and letting them all run at once buys no extra parallelism while forcing
+            // every compilation and syntax tree to stay live in memory simultaneously.
+            var results = new ConcurrentBag<EvaluationResult[]>();
+            await Parallel.ForEachAsync(
+                documents,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Environment.ProcessorCount,
+                    CancellationToken = cancellationToken
+                },
+                async (document, _) =>
+                {
+                    var inspections = await GetInspections(document.FilePath, document.Name, document.compilation, document.root, solution).ConfigureAwait(false);
+                    results.Add(inspections.AsArray());
+                }).ConfigureAwait(false);
 
             return results.SelectMany(x => x).AsArray();
         }
@@ -104,7 +126,10 @@ namespace ArchiMetrics.Analysis
 
         private class InnerInspector : CSharpSyntaxVisitor<Task<IEnumerable<EvaluationResult>>>
         {
-            private readonly IList<SyntaxKind> _supportedSyntaxKinds;
+            // A set, not a list: this is tested against every node of every document, so a linear
+            // scan through the supported kinds turns an O(1) check into O(kinds) on the hottest
+            // path in the whole review.
+            private readonly HashSet<SyntaxKind> _supportedSyntaxKinds;
             private readonly IDictionary<SyntaxKind, ITriviaEvaluation[]> _triviaEvaluations;
             private readonly IDictionary<SyntaxKind, ICodeEvaluation[]> _codeEvaluations;
             private readonly IDictionary<SyntaxKind, ISemanticEvaluation[]> _semanticEvaluations;
@@ -113,7 +138,7 @@ namespace ArchiMetrics.Analysis
 
             public InnerInspector(IDictionary<SyntaxKind, ITriviaEvaluation[]> triviaEvaluations, IDictionary<SyntaxKind, ICodeEvaluation[]> codeEvaluations, IDictionary<SyntaxKind, ISemanticEvaluation[]> semanticEvaluations, SemanticModel model, Solution solution)
             {
-                _supportedSyntaxKinds = codeEvaluations.Select(_ => _.Key).Concat(semanticEvaluations.Select(_ => _.Key)).Distinct().AsArray();
+                _supportedSyntaxKinds = new HashSet<SyntaxKind>(codeEvaluations.Select(_ => _.Key).Concat(semanticEvaluations.Select(_ => _.Key)));
                 _triviaEvaluations = triviaEvaluations;
                 _codeEvaluations = codeEvaluations;
                 _semanticEvaluations = semanticEvaluations;
@@ -128,7 +153,7 @@ namespace ArchiMetrics.Analysis
                     return Enumerable.Empty<EvaluationResult>();
                 }
 
-                var nodeChecks = CheckNodes(node.DescendantNodesAndSelf().Where(x => x.Kind().In(_supportedSyntaxKinds)).AsArray());
+                var nodeChecks = CheckNodes(node.DescendantNodesAndSelf().Where(x => _supportedSyntaxKinds.Contains(x.Kind())).AsArray());
                 var tokenResultTasks = node.DescendantTokens().SelectMany(VisitToken);
                 var nodeResultTasks = await Task.WhenAll(nodeChecks).ConfigureAwait(false);
 

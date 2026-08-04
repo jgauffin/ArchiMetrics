@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default test settings for the solution.
+
+  The performance tests open and analyse this repository end to end. That is a valuable regression
+  guard but far too slow for the normal edit/test loop, so they are excluded by default here.
+
+  Run the fast suite with a plain "dotnet test". Opt into the performance tests by passing
+  perf.runsettings via the settings switch, which replaces this file. Note that adding a command
+  line filter does not work for that, because command line filters are combined with the filter
+  below rather than replacing it.
+-->
+<RunSettings>
+  <RunConfiguration>
+    <TestCaseFilter>Category!=Performance</TestCaseFilter>
+  </RunConfiguration>
+</RunSettings>

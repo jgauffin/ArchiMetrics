@@ -14,14 +14,14 @@ namespace ArchiMetrics.CodeReview.Rules.Semantic
 {
 	using System.Collections.Generic;
 	using System.Linq;
-	using System.Threading;
 	using System.Threading.Tasks;
+	using Analysis;
 	using Analysis.Common;
 	using Analysis.Common.CodeReview;
+	using Analysis.ReferenceResolvers;
 	using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.CSharp;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
-	using Microsoft.CodeAnalysis.FindSymbols;
 
 	internal class ClassInstabilityRule : SemanticEvaluationBase, ICweMapping
 	{
@@ -88,14 +88,23 @@ namespace ArchiMetrics.CodeReview.Rules.Semantic
 		{
 			var symbol = (ITypeSymbol)semanticModel.GetDeclaredSymbol(node);
 			var efferent = GetReferencedTypes(node, symbol, semanticModel).AsArray();
-			var awaitable = SymbolFinder.FindCallersAsync(symbol, solution, CancellationToken.None).ConfigureAwait(false);
-			var callers = (await awaitable).AsArray();
-			var testCallers = callers
-				.Where(c => c.CallingSymbol.GetAttributes()
-				.Any(x => x.AttributeClass.Name.IsKnownTestAttribute()))
-				.AsArray();
-			var afferent = callers.Except(testCallers)
-				.Select(x => x.CallingSymbol.ContainingType)
+
+			// Afferent coupling is read from the solution-wide reference index, which is built once
+			// per solution and shared by every rule, so this is a dictionary lookup rather than a
+			// fresh scan of the whole solution for each class.
+			//
+			// This also corrects the number. The previous implementation asked
+			// SymbolFinder.FindCallersAsync for the callers of a *type*, but that API only reports
+			// callers of callable symbols such as methods and properties. A class symbol therefore
+			// always came back with zero callers, so stability was efferent / (efferent + 0) == 1
+			// and every class that referenced anything at all was reported as unstable, no matter
+			// how many other types depended on it.
+			var references = await solution.FindReferences(symbol).ConfigureAwait(false);
+			var afferent = references.Locations
+				.Where(x => x.ReferencingType != null)
+				.Where(x => x.ReferencingType.ToDisplayString() != symbol.ToDisplayString())
+				.Where(x => !IsReferencedFromTest(x))
+				.Select(x => x.ReferencingType)
 				.DistinctBy(s => s.ToDisplayString())
 				.AsArray();
 
@@ -113,6 +122,25 @@ namespace ArchiMetrics.CodeReview.Rules.Semantic
 			}
 
 			return null;
+		}
+
+		/// <summary>
+		/// Test code depends on production code by design, so counting it would make a class look
+		/// more depended-upon - and therefore more stable - than it really is in the shipping
+		/// application. Only references from non-test code describe the real coupling.
+		/// </summary>
+		private static bool IsReferencedFromTest(ReferenceLocation reference)
+		{
+			var sourceTree = reference.Location.SourceTree;
+			if (sourceTree == null)
+			{
+				return false;
+			}
+
+			var method = sourceTree.GetRoot().FindToken(reference.Location.SourceSpan.Start).GetMethod();
+
+			return method != null
+				   && method.AttributeLists.Any(a => a.Attributes.Any(b => b.Name.ToString().IsKnownTestAttribute()));
 		}
 
 		private static IEnumerable<ITypeSymbol> GetReferencedTypes(SyntaxNode classDeclaration, ISymbol sourceSymbol, SemanticModel semanticModel)

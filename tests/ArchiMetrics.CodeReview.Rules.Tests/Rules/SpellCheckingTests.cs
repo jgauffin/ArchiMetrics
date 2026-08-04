@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="SpellCheckingTests.cs" company="Reimers.dk">
-//   Copyright © Reimers.dk 2014
+//   Copyright ï¿½ Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -45,9 +45,14 @@ namespace ArchiMetrics.CodeReview.Rules.Tests.Rules
             [InlineData("GetValu")]
             public void FindMispelledMethodNames(string methodName)
             {
-                var method = CSharpSyntaxTree.ParseText($@"public void {methodName}() {{ }}");
+                // The method must be declared inside a type. Since C# 9 introduced top-level
+                // statements, a bare "public void Foo() { }" at file scope no longer parses as a
+                // MethodDeclaration at all - Roslyn reads it as a local function wrapped in a
+                // GlobalStatement. Parsing realistic code keeps the test honest: the rule only
+                // ever sees MethodDeclaration nodes in production, so that is what we hand it.
+                var method = CSharpSyntaxTree.ParseText($@"public class TestClass {{ public void {methodName}() {{ }} }}");
                 var result = _rule.Evaluate(method.GetRoot()
-                    .ChildNodes()
+                    .DescendantNodes()
                     .OfType<MethodDeclarationSyntax>()
                     .First());
 

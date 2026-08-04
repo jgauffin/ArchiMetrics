@@ -6,7 +6,7 @@
     <Version>3.0.0</Version>
     <Authors>Jonas Gauffin;Jacob Reimers</Authors>
     <Copyright>Copyright © Reimers.dk 2014-2017</Copyright>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>ArchiMetrics.CodeReview.Rules</AssemblyName>
     <PackageTags>Roslyn;Metrics;Analysis</PackageTags>
     <PackageReleaseNotes>Updated to use Roslyn 2.0</PackageReleaseNotes>

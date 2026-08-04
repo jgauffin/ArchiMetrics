@@ -6,7 +6,7 @@ When writing or updating code comments and documentation, target a junior develo
 
 ## Project Overview
 
-- .NET 9.0 C# static code analysis tool (metrics, code review, duplication detection)
+- .NET 10.0 C# static code analysis tool (metrics, code review, duplication detection)
 - Test framework: xUnit — run with `dotnet test` from repo root
 - `models/` contains Python ML code (.venv with torch, etc.) — don't read internals
 

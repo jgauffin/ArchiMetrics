@@ -6,7 +6,7 @@
     <Version>3.0.1</Version>
     <Authors>Jonas Gauffin;Jacob Reimers;Matthias Friedrich</Authors>
     <Company>Reimers.dk</Company>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>ArchiMetrics.Analysis</AssemblyName>
     <PackageTags>Roslyn;Metrics;Analysis</PackageTags>
     <PackageReleaseNotes>Updated to use Roslyn 2.0</PackageReleaseNotes>
