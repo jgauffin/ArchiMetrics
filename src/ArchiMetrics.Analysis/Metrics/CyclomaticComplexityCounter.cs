@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="CyclomaticComplexityCounter.cs" company="Reimers.dk">
-//   Copyright � Matthias Friedrich, Reimers.dk 2014
+//   Copyright � Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -12,7 +12,7 @@
 
 namespace ArchiMetrics.Analysis.Metrics
 {
-	using System.Linq;
+	using System.Collections.Generic;
 	using Microsoft.CodeAnalysis;
 	using Microsoft.CodeAnalysis.CSharp;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -29,14 +29,27 @@ namespace ArchiMetrics.Analysis.Metrics
 
 		private class InnerComplexityAnalyzer : CSharpSyntaxWalker
 		{
-			private static readonly SyntaxKind[] Contributors = new[]
-																{  
-																	SyntaxKind.CaseSwitchLabel, 
-																	SyntaxKind.CoalesceExpression, 
-																	SyntaxKind.ConditionalExpression, 
-																	SyntaxKind.LogicalAndExpression, 
-																	SyntaxKind.LogicalOrExpression, 
-																	SyntaxKind.LogicalNotExpression
+			/// <summary>
+			/// Expression-level constructs that introduce a decision. Each one lets execution reach the
+			/// following code by more than one route, which is the definition of a decision point.
+			/// </summary>
+			/// <remarks>
+			/// Deliberately absent: <c>!</c> and <c>not</c>. Negation evaluates a boolean, it does not choose
+			/// a path, so counting it would tax guard clauses — usually the more readable way to express the
+			/// same logic — without measuring any extra branch.
+			/// </remarks>
+			private static readonly HashSet<SyntaxKind> Contributors = new HashSet<SyntaxKind>
+																{
+																	SyntaxKind.CaseSwitchLabel,
+																	SyntaxKind.CasePatternSwitchLabel,
+																	SyntaxKind.CoalesceExpression,
+																	SyntaxKind.CoalesceAssignmentExpression,
+																	SyntaxKind.ConditionalExpression,
+																	SyntaxKind.ConditionalAccessExpression,
+																	SyntaxKind.LogicalAndExpression,
+																	SyntaxKind.LogicalOrExpression,
+																	SyntaxKind.AndPattern,
+																	SyntaxKind.OrPattern
 																};
 
 			// private static readonly string[] LazyTypes = new[] { "System.Threading.Tasks.Task" };
@@ -87,6 +100,22 @@ namespace ArchiMetrics.Analysis.Metrics
 				_counter++;
 			}
 
+			/// <summary>
+			/// Handles the deconstructing form, <c>foreach (var (a, b) in items)</c>. Roslyn models it as a
+			/// separate node type, so without this override the loop would slip through uncounted.
+			/// </summary>
+			public override void VisitForEachVariableStatement(ForEachVariableStatementSyntax node)
+			{
+				base.VisitForEachVariableStatement(node);
+				_counter++;
+			}
+
+			public override void VisitDoStatement(DoStatementSyntax node)
+			{
+				base.VisitDoStatement(node);
+				_counter++;
+			}
+
 			//// TODO: Calculate for tasks
 			////public override void VisitInvocationExpression(InvocationExpressionSyntax node)
 			////{
@@ -106,48 +135,13 @@ namespace ArchiMetrics.Analysis.Metrics
 			////	base.VisitInvocationExpression(node);
 			////}
 
-			////	base.VisitInvocationExpression(node);
-			////}
-			public override void VisitArgument(ArgumentSyntax node)
-			{
-				switch (node.Expression.Kind())
-				{
-					case SyntaxKind.ParenthesizedLambdaExpression:
-						{
-							var lambda = (ParenthesizedLambdaExpressionSyntax)node.Expression;
-							Visit(lambda.Body);
-						}
+			//// There is deliberately no VisitArgument override. An earlier version walked the body of a
+			//// lambda argument explicitly and then let the base walker reach it again, so every branch
+			//// inside a predicate was counted twice. Base traversal already covers lambda bodies.
 
-						break;
-					case SyntaxKind.SimpleLambdaExpression:
-						{
-							var lambda = (SimpleLambdaExpressionSyntax)node.Expression;
-							Visit(lambda.Body);
-						}
-
-						break;
-				}
-
-				base.VisitArgument(node);
-			}
-
-			public override void VisitDefaultExpression(DefaultExpressionSyntax node)
-			{
-				base.VisitDefaultExpression(node);
-				_counter++;
-			}
-
-			public override void VisitContinueStatement(ContinueStatementSyntax node)
-			{
-				base.VisitContinueStatement(node);
-				_counter++;
-			}
-
-			public override void VisitGotoStatement(GotoStatementSyntax node)
-			{
-				base.VisitGotoStatement(node);
-				_counter++;
-			}
+			//// Nor is there an override for default(T), continue or goto. None of them chooses between
+			//// paths: default(T) is a constant, and the two jumps are unconditional — the decision that
+			//// leads to them belongs to the enclosing if, which is counted in its own right.
 
 			public override void VisitIfStatement(IfStatementSyntax node)
 			{
@@ -159,6 +153,30 @@ namespace ArchiMetrics.Analysis.Metrics
 			{
 				base.VisitCatchClause(node);
 				_counter++;
+			}
+
+			/// <summary>
+			/// A <c>when</c> filter decides a second time, after the exception type has already matched, so
+			/// it is a path of its own on top of the catch clause.
+			/// </summary>
+			public override void VisitCatchFilterClause(CatchFilterClauseSyntax node)
+			{
+				base.VisitCatchFilterClause(node);
+				_counter++;
+			}
+
+			/// <summary>
+			/// Counts each arm of a switch expression, mirroring how case labels are counted in a switch
+			/// statement. The discard arm is skipped for the same reason <c>default:</c> is: it is the
+			/// fall-through, not an extra decision.
+			/// </summary>
+			public override void VisitSwitchExpressionArm(SwitchExpressionArmSyntax node)
+			{
+				base.VisitSwitchExpressionArm(node);
+				if (!node.Pattern.IsKind(SyntaxKind.DiscardPattern))
+				{
+					_counter++;
+				}
 			}
 		}
 	}

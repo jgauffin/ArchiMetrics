@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="MemberMetricsCalculator.cs" company="Reimers.dk">
-//   Copyright � Matthias Friedrich, Reimers.dk 2014
+//   Copyright � Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -26,7 +26,8 @@ namespace ArchiMetrics.Analysis.Metrics
     internal sealed class MemberMetricsCalculator : SemanticModelMetricsCalculator
     {
         private readonly CyclomaticComplexityCounter _counter = new CyclomaticComplexityCounter();
-        private readonly LinesOfCodeCalculator _locCalculator = new LinesOfCodeCalculator();
+        private readonly ExecutableStatementsCalculator _statementsCalculator = new ExecutableStatementsCalculator();
+        private readonly PhysicalLinesCalculator _linesCalculator = new PhysicalLinesCalculator();
         private readonly MemberNameResolver _nameResolver;
         private readonly Solution _solution;
         private readonly string _rootFolder;
@@ -64,22 +65,36 @@ namespace ArchiMetrics.Analysis.Metrics
             return CalculateMemberMetricSlim(methodDeclaration);
         }
 
-        private static double CalculateMaintainablityIndex(double cyclomaticComplexity, double linesOfCode, IHalsteadMetrics halsteadMetrics)
+        /// <summary>
+        /// Calculates the maintainability index on the normalised 0-100 scale, where higher is better.
+        /// </summary>
+        /// <remarks>
+        /// The size term is the <em>executable statement</em> count rather than physical lines, deliberately.
+        /// Feeding physical lines in would mean that reformatting a method — wrapping an argument list,
+        /// adding a blank line — changed its measured maintainability, and a metric that moves when the
+        /// behaviour has not is worse than no metric at all.
+        /// </remarks>
+        private static double CalculateMaintainablityIndex(double cyclomaticComplexity, double executableStatements, IHalsteadMetrics halsteadMetrics)
         {
-            if (linesOfCode.Equals(0.0) || halsteadMetrics.NumberOfOperands.Equals(0) || halsteadMetrics.NumberOfOperators.Equals(0))
+            if (executableStatements.Equals(0.0) || halsteadMetrics.NumberOfOperands.Equals(0) || halsteadMetrics.NumberOfOperators.Equals(0))
             {
                 return 100.0;
             }
 
             var num = Math.Log(halsteadMetrics.GetVolume());
-            var mi = ((171 - (5.2 * num) - (0.23 * cyclomaticComplexity) - (16.2 * Math.Log(linesOfCode))) * 100) / 171;
+            var mi = ((171 - (5.2 * num) - (0.23 * cyclomaticComplexity) - (16.2 * Math.Log(executableStatements))) * 100) / 171;
 
             return Math.Max(0.0, mi);
         }
 
+        private int CalculateExecutableStatements(SyntaxNode node)
+        {
+            return _statementsCalculator.Calculate(node);
+        }
+
         private int CalculateLinesOfCode(SyntaxNode node)
         {
-            return _locCalculator.Calculate(node);
+            return _linesCalculator.Calculate(node);
         }
 
         private int CalculateCyclomaticComplexity(SyntaxNode node)
@@ -110,10 +125,11 @@ namespace ArchiMetrics.Analysis.Metrics
             var memberName = _nameResolver.TryResolveMemberSignatureString(syntaxNode);
             var source = CalculateClassCoupling(syntaxNode);
             var complexity = CalculateCyclomaticComplexity(syntaxNode);
+            var executableStatements = CalculateExecutableStatements(syntaxNode);
             var linesOfCode = CalculateLinesOfCode(syntaxNode);
             var numberOfParameters = CalculateNumberOfParameters(syntaxNode);
             var numberOfLocalVariables = CalculateNumberOfLocalVariables(syntaxNode);
-            var maintainabilityIndex = CalculateMaintainablityIndex(complexity, linesOfCode, halsteadMetrics);
+            var maintainabilityIndex = CalculateMaintainablityIndex(complexity, executableStatements, halsteadMetrics);
             var afferentCoupling = await CalculateAfferentCoupling(syntaxNode).ConfigureAwait(false);
             var location = syntaxNode.GetLocation();
             var lineNumber = location.GetLineSpan().StartLinePosition.Line;
@@ -133,6 +149,7 @@ namespace ArchiMetrics.Analysis.Metrics
                 halsteadMetrics,
                 lineNumber,
                 linesOfCode,
+                executableStatements,
                 maintainabilityIndex,
                 complexity,
                 memberName,
@@ -150,10 +167,11 @@ namespace ArchiMetrics.Analysis.Metrics
             var memberName = _nameResolver.TryResolveMemberSignatureString(syntaxNode);
             var source = Enumerable.Empty<ITypeCoupling>();
             var complexity = CalculateCyclomaticComplexity(syntaxNode);
+            var executableStatements = CalculateExecutableStatements(syntaxNode);
             var linesOfCode = CalculateLinesOfCode(syntaxNode);
             const int NumberOfParameters = 0;
             const int NumberOfLocalVariables = 0;
-            var maintainabilityIndex = CalculateMaintainablityIndex(complexity, linesOfCode, halsteadMetrics);
+            var maintainabilityIndex = CalculateMaintainablityIndex(complexity, executableStatements, halsteadMetrics);
             const int AfferentCoupling = 0;
             const int LineNumber = 0;
             var filePath = string.Empty;
@@ -163,6 +181,7 @@ namespace ArchiMetrics.Analysis.Metrics
                 halsteadMetrics,
                 LineNumber,
                 linesOfCode,
+                executableStatements,
                 maintainabilityIndex,
                 complexity,
                 memberName,

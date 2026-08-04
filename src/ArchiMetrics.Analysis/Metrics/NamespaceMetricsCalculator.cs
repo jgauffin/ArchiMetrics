@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="NamespaceMetricsCalculator.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -39,20 +39,23 @@ namespace ArchiMetrics.Analysis.Metrics
 			}
 
 			var linesOfCode = typeMetrics.Sum(x => x.LinesOfCode);
+			var executableStatements = typeMetrics.Sum(x => x.ExecutableStatements);
 			var source = typeMetrics.SelectMany(x => x.Dependencies)
 						  .GroupBy(x => x.ToString())
 						  .Select(x => new TypeCoupling(x.First().TypeName, x.First().Namespace, x.First().Assembly, x.SelectMany(y => y.UsedMethods), x.SelectMany(y => y.UsedProperties), x.SelectMany(y => y.UsedEvents)))
 						  .Where(x => x.Namespace != namespaceNode.Name)
 						  .OrderBy(x => x.Assembly + x.Namespace + x.TypeName)
 						  .AsArray();
-			var maintainabilitySource = typeMetrics.Select(x => new Tuple<int, double>(x.LinesOfCode, x.MaintainabilityIndex)).AsArray();
-			var maintainabilityIndex = linesOfCode > 0 && maintainabilitySource.Any() ? maintainabilitySource.Sum(x => x.Item1 * x.Item2) / linesOfCode : 100.0;
+			// Weighted by executable statements, matching how the index is built at member and type level.
+			var maintainabilitySource = typeMetrics.Select(x => new Tuple<int, double>(x.ExecutableStatements, x.MaintainabilityIndex)).AsArray();
+			var maintainabilityIndex = executableStatements > 0 && maintainabilitySource.Any() ? maintainabilitySource.Sum(x => x.Item1 * x.Item2) / executableStatements : 100.0;
 			var cyclomaticComplexity = typeMetrics.Sum(x => x.CyclomaticComplexity);
 			var depthOfInheritance = typeMetrics.Any() ? typeMetrics.Max(x => x.DepthOfInheritance) : 0;
 			return new NamespaceMetric(
 				maintainabilityIndex,
 				cyclomaticComplexity,
 				linesOfCode,
+				executableStatements,
 				source,
 				depthOfInheritance,
 				namespaceNode.Name,

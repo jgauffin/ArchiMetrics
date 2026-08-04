@@ -13,6 +13,17 @@
     <PackageProjectUrl>https://github.com/jjrdk/ArchiMetrics</PackageProjectUrl>
     <PackageLicenseUrl>http://www.opensource.org/licenses/MIT</PackageLicenseUrl>
     <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+    <!--
+      Emits the XML documentation alongside the assembly so it reaches consumers through IntelliSense and
+      the NuGet package. Most rules in this library are internal and discovered by reflection; what a
+      consumer actually touches is the small public surface that hands those rules to the reviewer.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      CS1591 (missing XML comment) is suppressed while documentation coverage is filled in progressively.
+      Remove this suppression once coverage is complete, so the compiler starts guarding it.
+    -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="**\*.resx" />

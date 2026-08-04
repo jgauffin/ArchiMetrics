@@ -11,6 +11,27 @@ namespace ArchiMetrics.Analysis
     using Metrics;
     using Microsoft.CodeAnalysis;
 
+    /// <summary>
+    /// The facade over ArchiMetrics: wraps a Roslyn <see cref="Workspace"/> and exposes metrics, duplication
+    /// detection and documentation analysis over it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the type to use rather than the individual calculators. It exists because the analysis
+    /// pipeline underneath has a lot of moving parts — compilations, semantic models, embedding providers —
+    /// and wiring them correctly is not something every caller should have to learn.
+    /// </para>
+    /// <para>
+    /// Every query pages through <c>skip</c>/<c>take</c> and can be narrowed to one project. That is
+    /// deliberate: it is designed to be driven by tools and coding agents, for which returning an entire
+    /// solution's metric tree in one call is worse than useless.
+    /// </para>
+    /// <para>
+    /// Metric values are meaningless without their scale. See <see cref="MetricThresholds"/> for the ranges,
+    /// directions and rating bands, and use its <c>Rate*</c> methods rather than comparing against numbers
+    /// of your own.
+    /// </para>
+    /// </remarks>
     public sealed class CodeAnalysisAgent : IDisposable
     {
         private readonly ICodeMetricsCalculator _metricsCalculator;
@@ -20,6 +41,23 @@ namespace ArchiMetrics.Analysis
         private readonly string _rootFolder;
         private readonly bool _ownsEmbeddingProvider;
 
+        /// <summary>
+        /// Initialises the agent over a workspace, using the default metrics calculator.
+        /// </summary>
+        /// <param name="workspace">The Roslyn workspace to analyse. Required.</param>
+        /// <param name="rootFolder">
+        /// The folder that file paths in results are reported relative to. Pass the repository root so that
+        /// results are portable between machines; <see langword="null"/> is treated as empty, which leaves
+        /// absolute paths in the output.
+        /// </param>
+        /// <param name="embeddingProvider">
+        /// Supplies the vectors used for semantic clone detection and documentation analysis. Optional:
+        /// without it <see cref="DetectDuplication(string, int, double, int, int, CancellationToken)"/> still
+        /// finds structural clones, but
+        /// <see cref="FindNeedsDocsOrRefactor(string, int, int, int, CancellationToken)"/> throws. The caller
+        /// keeps ownership and must dispose it; use <see cref="WithOnnxModel"/> to have the agent own one.
+        /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="workspace"/> is <see langword="null"/>.</exception>
         public CodeAnalysisAgent(
             Workspace workspace,
             string rootFolder,
@@ -28,6 +66,19 @@ namespace ArchiMetrics.Analysis
         {
         }
 
+        /// <summary>
+        /// Initialises the agent with a specific metrics calculator, for callers substituting the default
+        /// implementation — most often a test double.
+        /// </summary>
+        /// <param name="workspace">The Roslyn workspace to analyse. Required.</param>
+        /// <param name="rootFolder">The folder that file paths in results are reported relative to.</param>
+        /// <param name="metricsCalculator">The calculator to use. Required.</param>
+        /// <param name="embeddingProvider">
+        /// Optional embedding provider. The caller keeps ownership and must dispose it.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        /// <paramref name="workspace"/> or <paramref name="metricsCalculator"/> is <see langword="null"/>.
+        /// </exception>
         public CodeAnalysisAgent(
             Workspace workspace,
             string rootFolder,
@@ -52,6 +103,24 @@ namespace ArchiMetrics.Analysis
             _projectMetricsCalculator = new ProjectMetricsCalculator(_metricsCalculator);
         }
 
+        /// <summary>
+        /// Creates an agent backed by a local ONNX embedding model, enabling the semantic analyses.
+        /// </summary>
+        /// <remarks>
+        /// The agent created this way <em>owns</em> the embedding provider and disposes it with itself, which
+        /// is the difference from passing a provider to a constructor. Use this when the model exists only to
+        /// serve this agent, so its lifetime cannot be forgotten.
+        /// </remarks>
+        /// <param name="workspace">The Roslyn workspace to analyse.</param>
+        /// <param name="rootFolder">The folder that file paths in results are reported relative to.</param>
+        /// <param name="modelDirectory">
+        /// A directory holding <c>model.onnx</c>, <c>vocab.json</c> and <c>merges.txt</c>.
+        /// </param>
+        /// <param name="maxSequenceLength">
+        /// The longest token sequence handed to the model. Longer methods are truncated, so raising it costs
+        /// time and memory but stops very long methods being judged on their opening lines alone.
+        /// </param>
+        /// <returns>An agent that will dispose the embedding provider when it is itself disposed.</returns>
         public static CodeAnalysisAgent WithOnnxModel(
             Workspace workspace,
             string rootFolder,
@@ -66,6 +135,10 @@ namespace ArchiMetrics.Analysis
             return new CodeAnalysisAgent(workspace, rootFolder, new CodeMetricsCalculator(), provider, ownsEmbeddingProvider: true);
         }
 
+        /// <summary>
+        /// Releases the embedding provider, but only if this agent created it via <see cref="WithOnnxModel"/>.
+        /// A provider passed in by the caller is left alone, since the caller may still be using it.
+        /// </summary>
         public void Dispose()
         {
             if (_ownsEmbeddingProvider && _embeddingProvider is IDisposable disposable)
@@ -74,6 +147,19 @@ namespace ArchiMetrics.Analysis
             }
         }
 
+        /// <summary>
+        /// Calculates namespace-level metrics across the workspace, worst first.
+        /// </summary>
+        /// <remarks>
+        /// Results are ordered by maintainability index ascending, so the namespaces most in need of
+        /// attention arrive first and a caller taking only the first page still sees the worst of the
+        /// codebase. See <see cref="MetricThresholds"/> for what the values mean.
+        /// </remarks>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of namespace metrics, ordered worst first.</returns>
         public Task<PagedResult<INamespaceMetric>> CalculateMetrics(
             string projectName = null,
             int skip = 0,
@@ -83,6 +169,15 @@ namespace ArchiMetrics.Analysis
             return CalculateMetrics(_workspace.CurrentSolution, projectName, skip, take, cancellationToken);
         }
 
+        /// <summary>
+        /// Calculates namespace-level metrics for a specific solution snapshot, worst first.
+        /// </summary>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of namespace metrics, ordered worst first.</returns>
         public async Task<PagedResult<INamespaceMetric>> CalculateMetrics(
             Solution solution,
             string projectName = null,
@@ -95,6 +190,28 @@ namespace ArchiMetrics.Analysis
             return PagedResult<INamespaceMetric>.Create(sorted, skip, take);
         }
 
+        /// <summary>
+        /// Finds duplicated code, grouped into clone classes and ordered by how many copies each has.
+        /// </summary>
+        /// <remarks>
+        /// Detection runs in two layers. The first compares normalised syntax and catches exact and renamed
+        /// copies. The second compares embeddings and catches code that does the same thing while looking
+        /// different — that layer runs only if an embedding provider was supplied, so without one this finds
+        /// structural duplication only, quietly.
+        /// </remarks>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="minimumTokens">
+        /// The size below which a method is ignored. Small methods resemble each other for uninteresting
+        /// reasons — property accessors and guard clauses are all alike — so the floor keeps the noise out.
+        /// </param>
+        /// <param name="similarityThreshold">
+        /// The cosine similarity, 0.0 to 1.0, above which two methods count as semantic clones. Lowering it
+        /// finds looser matches at the cost of false positives.
+        /// </param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of clone classes, most-copied first.</returns>
         public Task<PagedResult<CloneClass>> DetectDuplication(
             string projectName = null,
             int minimumTokens = 50,
@@ -106,6 +223,17 @@ namespace ArchiMetrics.Analysis
             return DetectDuplication(_workspace.CurrentSolution, projectName, minimumTokens, similarityThreshold, skip, take, cancellationToken);
         }
 
+        /// <summary>
+        /// Finds duplicated code in a specific solution snapshot, grouped into clone classes.
+        /// </summary>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="minimumTokens">The size below which a method is ignored.</param>
+        /// <param name="similarityThreshold">Cosine similarity, 0.0 to 1.0, above which two methods are clones.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of clone classes, most-copied first.</returns>
         public async Task<PagedResult<CloneClass>> DetectDuplication(
             Solution solution,
             string projectName = null,
@@ -126,6 +254,25 @@ namespace ArchiMetrics.Analysis
             return PagedResult<CloneClass>.Create(sorted, skip, take);
         }
 
+        /// <summary>
+        /// Finds methods whose names do not tell the reader what they do, ranked by how opaque they are.
+        /// </summary>
+        /// <remarks>
+        /// The analysis compares an embedding of the method's name against an embedding of its body. A wide
+        /// gap means the name is not describing the work, which leaves a reader no choice but to read the
+        /// whole implementation. Such a method wants either a clearer name, a documentation comment, or
+        /// breaking up — the result says a method is hard to understand, not which of the three to do.
+        /// </remarks>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="minimumTokens">The size below which a method is ignored as too trivial to matter.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of candidates, most opaque first.</returns>
+        /// <exception cref="InvalidOperationException">
+        /// No embedding provider was supplied. Unlike duplication detection this analysis cannot degrade
+        /// gracefully, because comparing a name to a body is the whole of what it does.
+        /// </exception>
         public Task<PagedResult<NeedsDocsOrRefactorCandidate>> FindNeedsDocsOrRefactor(
             string projectName = null,
             int minimumTokens = 20,
@@ -136,6 +283,17 @@ namespace ArchiMetrics.Analysis
             return FindNeedsDocsOrRefactor(_workspace.CurrentSolution, projectName, minimumTokens, skip, take, cancellationToken);
         }
 
+        /// <summary>
+        /// Finds opaque methods in a specific solution snapshot, ranked by how opaque they are.
+        /// </summary>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="minimumTokens">The size below which a method is ignored.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of candidates, most opaque first.</returns>
+        /// <exception cref="InvalidOperationException">No embedding provider was supplied.</exception>
         public async Task<PagedResult<NeedsDocsOrRefactorCandidate>> FindNeedsDocsOrRefactor(
             Solution solution,
             string projectName = null,
@@ -176,6 +334,16 @@ namespace ArchiMetrics.Analysis
             return GetWorstNamespaces(_workspace.CurrentSolution, projectName, skip, take, cancellationToken);
         }
 
+        /// <summary>
+        /// Returns the worst-offending namespaces in a specific solution snapshot, ranked by maintainability
+        /// index (lowest first).
+        /// </summary>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of flat namespace summaries, worst first.</returns>
         public async Task<PagedResult<NamespaceSummary>> GetWorstNamespaces(
             Solution solution,
             string projectName = null,
@@ -207,6 +375,16 @@ namespace ArchiMetrics.Analysis
             return GetNamespaceTypes(_workspace.CurrentSolution, namespaceName, projectName, skip, take, cancellationToken);
         }
 
+        /// <summary>
+        /// Returns a flat summary of every type in one namespace of a specific solution snapshot, ranked by
+        /// maintainability index (lowest first).
+        /// </summary>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="namespaceName">The namespace to drill into.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of flat type summaries, worst first.</returns>
         public async Task<PagedResult<TypeSummary>> GetNamespaceTypes(
             Solution solution,
             string namespaceName,
@@ -240,6 +418,16 @@ namespace ArchiMetrics.Analysis
             return GetWorstMethods(_workspace.CurrentSolution, projectName, skip, take, cancellationToken);
         }
 
+        /// <summary>
+        /// Returns the most complex methods in a specific solution snapshot, each carrying its fully
+        /// qualified location so a caller can jump straight to it.
+        /// </summary>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of flat member summaries, most complex first.</returns>
         public async Task<PagedResult<MemberSummary>> GetWorstMethods(
             Solution solution,
             string projectName = null,
@@ -271,6 +459,16 @@ namespace ArchiMetrics.Analysis
             return GetWorstTypes(_workspace.CurrentSolution, projectName, skip, take, cancellationToken);
         }
 
+        /// <summary>
+        /// Returns the worst-offending types across every namespace in a specific solution snapshot, ranked
+        /// by maintainability index (lowest first).
+        /// </summary>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="skip">Results to skip, for paging.</param>
+        /// <param name="take">Results to return; 0 returns everything from <paramref name="skip"/> on.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>A page of flat type summaries, worst first, regardless of namespace.</returns>
         public async Task<PagedResult<TypeSummary>> GetWorstTypes(
             Solution solution,
             string projectName = null,
@@ -309,6 +507,15 @@ namespace ArchiMetrics.Analysis
             return GenerateIso5055Report(inspector, rules, _workspace.CurrentSolution, projectName, cancellationToken);
         }
 
+        /// <summary>
+        /// Produces an ISO/IEC 5055-aligned report for a specific solution snapshot.
+        /// </summary>
+        /// <param name="inspector">The inspector loaded with the rules to evaluate.</param>
+        /// <param name="rules">The same rules, used to determine which CWEs the report can speak to.</param>
+        /// <param name="solution">The solution to analyse, rather than the workspace's current one.</param>
+        /// <param name="projectName">Limits analysis to one project. <see langword="null"/> analyses all.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>The report, including the CWE identifiers the loaded rules actually cover.</returns>
         public async Task<Iso5055Report> GenerateIso5055Report(
             INodeInspector inspector,
             IEnumerable<IEvaluation> rules,
@@ -327,11 +534,26 @@ namespace ArchiMetrics.Analysis
                 rules);
         }
 
+        /// <summary>
+        /// Renders the whole workspace as plain text: every project, namespace and type with its metrics and
+        /// a health rating.
+        /// </summary>
+        /// <remarks>
+        /// The text opens with a legend explaining every scale it uses, so the output can be handed to a
+        /// reader — or a model — that has never seen this library. Without it "Maintainability: 42" and
+        /// "[3 - Concerning]" are two numbers running in opposite directions with nothing to say so.
+        /// </remarks>
+        /// <returns>The summary text, or an empty string if the workspace holds no projects.</returns>
         public Task<string> GenerateWorkspaceSummary()
         {
             return GenerateWorkspaceSummary(_workspace.CurrentSolution);
         }
 
+        /// <summary>
+        /// Renders a specific solution snapshot as plain text, prefixed by the scale legend.
+        /// </summary>
+        /// <param name="solution">The solution to render, rather than the workspace's current one.</param>
+        /// <returns>The summary text, or an empty string if the solution holds no projects.</returns>
         public Task<string> GenerateWorkspaceSummary(Solution solution)
         {
             var summary = new WorkspaceMetricsSummary(_projectMetricsCalculator);

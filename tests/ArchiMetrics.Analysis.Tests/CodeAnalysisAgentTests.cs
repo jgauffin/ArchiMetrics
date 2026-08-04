@@ -9,6 +9,7 @@ namespace ArchiMetrics.Analysis.Tests
     using Microsoft.CodeAnalysis;
     using Microsoft.CodeAnalysis.CSharp;
     using Xunit;
+    using Xunit.Abstractions;
 
     public sealed class CodeAnalysisAgentTests
     {
@@ -427,6 +428,101 @@ namespace Test
 
         public class GenerateWorkspaceSummary
         {
+            private readonly ITestOutputHelper _output;
+
+            public GenerateWorkspaceSummary(ITestOutputHelper output)
+            {
+                _output = output;
+            }
+
+            /// <summary>
+            /// The summary is often the only thing an automated consumer ever sees, so it has to be
+            /// self-describing. A bare "Maintainability: 42" is unreadable without knowing the scale runs to
+            /// 100 and that higher is better, and "[3 - Concerning]" is unreadable without knowing the
+            /// rating runs the other way.
+            /// </summary>
+            [Fact]
+            public async Task SummaryOpensWithAScaleLegend()
+            {
+                var code = @"
+namespace Legend
+{
+    public class Thing
+    {
+        public int Get() { return 1; }
+    }
+}";
+                using var workspace = CreateWorkspace(code, "legend-project");
+                var agent = new CodeAnalysisAgent(workspace, string.Empty);
+                var summary = await agent.GenerateWorkspaceSummary();
+
+                _output.WriteLine(summary);
+
+                Assert.StartsWith("Scale legend", summary);
+                Assert.Contains("1 = Healthy", summary);
+                Assert.Contains("5 = Fix ASAP", summary);
+                Assert.Contains("Lower is better", summary);
+
+                // The legend has to arrive before the first value it explains.
+                Assert.True(
+                    summary.IndexOf("Scale legend", System.StringComparison.Ordinal)
+                    < summary.IndexOf("Maintainability:", System.StringComparison.Ordinal),
+                    "The legend must precede the metrics it describes.");
+            }
+
+            [Fact]
+            public async Task SummaryReportsBothSizeMetrics()
+            {
+                var code = @"
+namespace Sizes
+{
+    public class Thing
+    {
+        public int Get() { return 1; }
+    }
+}";
+                using var workspace = CreateWorkspace(code, "sizes-project");
+                var agent = new CodeAnalysisAgent(workspace, string.Empty);
+                var summary = await agent.GenerateWorkspaceSummary();
+
+                Assert.Contains("Lines:", summary);
+                Assert.Contains("Statements:", summary);
+            }
+
+            /// <summary>
+            /// The summary is parsed by tools as often as it is read by people. On a machine whose culture
+            /// uses a comma as the decimal separator, "Instability: 1,00" reads as two fields rather than
+            /// one number, so the value must be formatted invariantly regardless of the host's locale.
+            /// </summary>
+            [Fact]
+            public async Task DecimalValuesUseAnInvariantSeparator()
+            {
+                var code = @"
+namespace Culture
+{
+    public class Thing
+    {
+        public int Get() { return 1; }
+    }
+}";
+                using var workspace = CreateWorkspace(code, "culture-project");
+                var agent = new CodeAnalysisAgent(workspace, string.Empty);
+
+                var previous = System.Threading.Thread.CurrentThread.CurrentCulture;
+                try
+                {
+                    System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("sv-SE");
+                    var summary = await agent.GenerateWorkspaceSummary();
+
+                    Assert.Contains("Instability: 1.00", summary);
+                    Assert.DoesNotContain("Instability: 1,00", summary);
+                }
+                finally
+                {
+                    System.Threading.Thread.CurrentThread.CurrentCulture = previous;
+                }
+            }
+
             [Fact]
             public async Task ReturnsFormattedSummaryForSimpleProject()
             {
@@ -464,7 +560,8 @@ namespace Clean
                 var agent = new CodeAnalysisAgent(workspace, string.Empty);
                 var summary = await agent.GenerateWorkspaceSummary();
 
-                Assert.Contains("Healthy", summary);
+                // Matches the rating bracket rather than the bare word, which also appears in the legend.
+                Assert.Contains("- Healthy]", summary);
             }
 
             [Fact]
@@ -531,7 +628,7 @@ namespace Complex
                 var agent = new CodeAnalysisAgent(workspace, string.Empty);
                 var summary = await agent.GenerateWorkspaceSummary();
 
-                Assert.DoesNotContain("Healthy", summary);
+                Assert.DoesNotContain("- Healthy]", summary);
             }
 
             [Fact]

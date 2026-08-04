@@ -20,15 +20,32 @@ namespace ArchiMetrics.Analysis
     using Metrics;
     using Microsoft.CodeAnalysis;
 
+    /// <summary>
+    /// Calculates project-level metrics for every project in a solution, rolling up the namespace metrics
+    /// produced by the underlying code metrics calculator.
+    /// </summary>
     public class ProjectMetricsCalculator : IProjectMetricsCalculator
     {
         private readonly ICodeMetricsCalculator _metricsCalculator;
 
+        /// <summary>
+        /// Initialises the calculator.
+        /// </summary>
+        /// <param name="metricsCalculator">The calculator supplying the underlying namespace metrics.</param>
         public ProjectMetricsCalculator(ICodeMetricsCalculator metricsCalculator)
         {
             _metricsCalculator = metricsCalculator;
         }
 
+        /// <summary>
+        /// Calculates metrics for every project in the solution.
+        /// </summary>
+        /// <remarks>
+        /// Compilations for all projects are started together and awaited as a group, since obtaining them is
+        /// the slow part and they do not depend on one another.
+        /// </remarks>
+        /// <param name="solution">The solution to analyse.</param>
+        /// <returns>One metric per project, in the solution's own order.</returns>
         public async Task<IEnumerable<IProjectMetric>> Calculate(Solution solution)
         {
             var tasks = (from project in solution.Projects

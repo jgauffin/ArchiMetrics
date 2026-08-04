@@ -225,12 +225,76 @@ using System.Linq;
 					}
 				}
 			}", 4)]
-            public async Task CodeHasExpectedLinesOfCode(string code, int loc)
+            public async Task CodeHasExpectedExecutableStatements(string code, int statements)
             {
                 var project = CreateProject(code);
                 var metrics = await _analyzer.Calculate(project, null);
 
-                Assert.Equal(loc, metrics.First().LinesOfCode);
+                Assert.Equal(statements, metrics.First().ExecutableStatements);
+            }
+
+            /// <summary>
+            /// Physical lines and executable statements measure different things, and a normally formatted
+            /// class must show that: the braces, the declaration lines and the blank space between members
+            /// are all lines a reader scrolls through but no work the code performs.
+            /// </summary>
+            [Fact]
+            public async Task LinesOfCodeCountsMoreThanExecutableStatements()
+            {
+                const string Code = @"namespace Testing
+{
+    public class TestClass
+    {
+        public void SomeMethod()
+        {
+            var x = 1;
+        }
+    }
+}";
+                var project = CreateProject(Code);
+                var metrics = await _analyzer.Calculate(project, null);
+                var metric = metrics.First();
+
+                Assert.True(
+                    metric.LinesOfCode > metric.ExecutableStatements,
+                    $"Expected lines ({metric.LinesOfCode}) to exceed statements ({metric.ExecutableStatements}).");
+            }
+
+            /// <summary>
+            /// Reformatting changes how the code looks, never what it does. The statement count must be
+            /// blind to layout, otherwise the maintainability index built on it would drift every time
+            /// somebody reflowed a file.
+            /// </summary>
+            [Fact]
+            public async Task ReformattingChangesLinesButNotStatements()
+            {
+                const string Compact = @"namespace Testing
+{
+    public class TestClass
+    {
+        public int Add(int a, int b) { return a + b; }
+    }
+}";
+                const string Spread = @"namespace Testing
+{
+    public class TestClass
+    {
+        public int Add(
+            int a,
+            int b)
+        {
+            return
+                a + b;
+        }
+    }
+}";
+                var compact = (await _analyzer.Calculate(CreateProject(Compact), null)).First();
+                var spread = (await _analyzer.Calculate(CreateProject(Spread), null)).First();
+
+                Assert.Equal(compact.ExecutableStatements, spread.ExecutableStatements);
+                Assert.True(
+                    spread.LinesOfCode > compact.LinesOfCode,
+                    $"Expected the spread form ({spread.LinesOfCode}) to occupy more lines than the compact one ({compact.LinesOfCode}).");
             }
 
             private Project CreateProject(string text)

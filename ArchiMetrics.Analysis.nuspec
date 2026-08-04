@@ -17,7 +17,8 @@ The project calculates the following metrics:
 Project Level
 
 - Cyclomatic Complexity
-- LinesOfCode
+- Lines of Code
+- Executable Statements
 - Maintainability Index
 - Project Dependencies
 - Type Couplings
@@ -29,7 +30,8 @@ Project Level
 Namespace Level
 
 - Cyclomatic Complexity
-- LinesOfCode
+- Lines of Code
+- Executable Statements
 - Maintainability Index
 - Project Dependencies
 - Type Couplings
@@ -39,7 +41,8 @@ Namespace Level
 Type Level
 
 - Cyclomatic Complexity
-- LinesOfCode
+- Lines of Code
+- Executable Statements
 - Maintainability Index
 - Project Dependencies
 - Type Couplings

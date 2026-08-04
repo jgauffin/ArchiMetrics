@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="ProjectMetric.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -29,8 +29,12 @@ namespace ArchiMetrics.Analysis.Metrics
             EfferentCoupling = AssemblyDependencies.Count();
             NamespaceMetrics = namespaceMetrics.AsArray();
             LinesOfCode = NamespaceMetrics.Sum(x => x.LinesOfCode);
-            MaintainabilityIndex = LinesOfCode == 0 ? 100 : NamespaceMetrics.Sum(x => x.MaintainabilityIndex * x.LinesOfCode) / LinesOfCode;
-            CyclomaticComplexity = LinesOfCode == 0 ? 0 : NamespaceMetrics.Sum(x => x.CyclomaticComplexity * x.LinesOfCode) / LinesOfCode;
+            ExecutableStatements = NamespaceMetrics.Sum(x => x.ExecutableStatements);
+
+            // Weighted by executable statements rather than physical lines: the aggregate has to be
+            // insensitive to formatting for the same reason the member-level index is.
+            MaintainabilityIndex = ExecutableStatements == 0 ? 100 : NamespaceMetrics.Sum(x => x.MaintainabilityIndex * x.ExecutableStatements) / ExecutableStatements;
+            CyclomaticComplexity = ExecutableStatements == 0 ? 0 : NamespaceMetrics.Sum(x => x.CyclomaticComplexity * x.ExecutableStatements) / ExecutableStatements;
             Dependencies = NamespaceMetrics.SelectMany(x => x.Dependencies).Where(x => x.Assembly != Name).Distinct(Comparer).AsArray();
             Dependants = Dependencies.Select(x => x.Assembly)
                 .Distinct()
@@ -49,6 +53,8 @@ namespace ArchiMetrics.Analysis.Metrics
         public int AfferentCoupling { get; }
 
         public int LinesOfCode { get; }
+
+        public int ExecutableStatements { get; }
 
         public double MaintainabilityIndex { get; }
 

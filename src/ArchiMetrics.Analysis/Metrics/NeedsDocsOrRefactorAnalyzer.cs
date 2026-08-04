@@ -13,6 +13,15 @@ namespace ArchiMetrics.Analysis.Metrics
     using Microsoft.CodeAnalysis.CSharp;
     using Microsoft.CodeAnalysis.CSharp.Syntax;
 
+    /// <summary>
+    /// Finds methods whose names do not tell a reader what they do.
+    /// </summary>
+    /// <remarks>
+    /// The core signal is the gap between an embedding of the method's name and an embedding of its body. A
+    /// wide gap means the name is not carrying its weight, so the only way to learn what the method does is
+    /// to read all of it — the cost this analyzer exists to surface. Complexity, nesting and unexplained
+    /// literals are folded in as secondary evidence, since they compound the same problem.
+    /// </remarks>
     public sealed class NeedsDocsOrRefactorAnalyzer
     {
         private readonly IEmbeddingProvider _embeddingProvider;
@@ -27,6 +36,24 @@ namespace ArchiMetrics.Analysis.Metrics
         private readonly double _weightNesting;
         private readonly double _weightMagicLiterals;
 
+        /// <summary>
+        /// Initialises the analyzer.
+        /// </summary>
+        /// <remarks>
+        /// The four weights are exposed so the balance can be tuned per codebase, and they are expected to
+        /// sum to 1.0 — that is what keeps <c>OpacityScore</c> inside 0.0 to 1.0 and therefore comparable
+        /// between runs. Nothing enforces the sum, so a caller changing one weight should adjust another.
+        /// </remarks>
+        /// <param name="embeddingProvider">Supplies the name and body vectors. Required.</param>
+        /// <param name="rootFolder">The folder that reported file paths are relative to.</param>
+        /// <param name="minimumTokens">
+        /// The size below which a method is ignored. Short methods are readable whatever they are called.
+        /// </param>
+        /// <param name="weightSemanticGap">Weight of the name-versus-body gap, the primary signal.</param>
+        /// <param name="weightComplexity">Weight of cyclomatic complexity.</param>
+        /// <param name="weightNesting">Weight of block nesting depth.</param>
+        /// <param name="weightMagicLiterals">Weight of unexplained literal values.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="embeddingProvider"/> is <see langword="null"/>.</exception>
         public NeedsDocsOrRefactorAnalyzer(
             IEmbeddingProvider embeddingProvider,
             string rootFolder,
@@ -45,6 +72,14 @@ namespace ArchiMetrics.Analysis.Metrics
             _weightMagicLiterals = weightMagicLiterals;
         }
 
+        /// <summary>
+        /// Analyses the given syntax trees and returns the methods that read as opaque.
+        /// </summary>
+        /// <param name="trees">The syntax trees to examine.</param>
+        /// <param name="cancellationToken">Cancels the analysis.</param>
+        /// <returns>
+        /// The candidates found, unordered. Callers usually sort by <c>OpacityScore</c> descending.
+        /// </returns>
         public async Task<IReadOnlyList<NeedsDocsOrRefactorCandidate>> Analyze(
             IEnumerable<SyntaxTree> trees,
             CancellationToken cancellationToken = default)

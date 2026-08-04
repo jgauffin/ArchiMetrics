@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="TypeMetric.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -25,6 +25,7 @@ namespace ArchiMetrics.Analysis.Metrics
 			AccessModifierKind accessModifier,
 			IEnumerable<IMemberMetric> memberMetrics,
 			int linesOfCode,
+			int executableStatements,
 			int cyclomaticComplexity,
 			double maintainabilityIndex,
 			int depthOfInheritance,
@@ -40,6 +41,7 @@ namespace ArchiMetrics.Analysis.Metrics
 			AccessModifier = accessModifier;
 			MemberMetrics = memberMetrics.AsArray();
 			LinesOfCode = linesOfCode;
+			ExecutableStatements = executableStatements;
 			CyclomaticComplexity = cyclomaticComplexity;
 			MaintainabilityIndex = maintainabilityIndex;
 			DepthOfInheritance = depthOfInheritance;
@@ -70,6 +72,8 @@ namespace ArchiMetrics.Analysis.Metrics
 		public IEnumerable<IMemberMetric> MemberMetrics { get; }
 
 		public int LinesOfCode { get; }
+
+		public int ExecutableStatements { get; }
 
 		public int CyclomaticComplexity { get; }
 

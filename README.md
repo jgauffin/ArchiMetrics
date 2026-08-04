@@ -89,12 +89,44 @@ var report = await agent.GenerateIso5055Report(inspector, allRules);
 
 ## Metrics
 
-ArchiMetrics calculates metrics at four levels of granularity:
+ArchiMetrics calculates metrics at four levels of granularity — project, namespace, type and member. Values
+are measured at member level; everything above is an aggregate.
 
-- **Project** — cyclomatic complexity, LOC, maintainability index, abstractness, afferent/efferent coupling, relational cohesion
-- **Namespace** — cyclomatic complexity, LOC, maintainability index, depth of inheritance, abstractness, class coupling
-- **Type** — cyclomatic complexity, LOC, maintainability index, depth of inheritance, afferent/efferent coupling, instability
-- **Member** — cyclomatic complexity, LOC, maintainability index, parameters, local variables, afferent coupling, Halstead metrics
+### Scales
+
+| Metric | Range | Direction | Notes |
+|---|---|---|---|
+| Maintainability index | 0–100 | Higher is better | Normalised and clamped at 0, not the raw formula that can go negative. A member with no measurable body scores 100. |
+| Cyclomatic complexity | 1 and up | Lower is better | Independent paths through the code. A lower bound on the test cases needed for branch coverage. |
+| Lines of code | 0 and up | Neither | Source lines carrying code. Blank lines, comments and documentation excluded; brace-only lines included. |
+| Executable statements | 0 and up | Neither | Size in units of work, unaffected by formatting. The size term in the maintainability index. |
+| Depth of inheritance | 0 and up | Lower is better | Base types above a type. |
+| Efferent coupling | 0 and up | Lower is better | Dependencies going out. |
+| Afferent coupling | 0 and up | Neither | Dependencies coming in. High means risky to change, not badly written. |
+| Instability | 0.0–1.0 | Neither | `Ce / (Ca + Ce)`. 0 = stable and widely depended on; 1 = free to change. |
+| Abstractness | 0.0–1.0 | Neither | Share of types that are abstract. Read against how much depends on the namespace or project. |
+| Relational cohesion | 0.0 and up | Higher, within reason | Average internal relationships per type — do these types belong together? |
+
+### Ratings
+
+Values are turned into a 1–5 rating by `MetricThresholds`, where **lower is better** — the opposite direction
+to the maintainability index, so never present the two as the same kind of number. An element is rated by its
+*worst* metric, not its average, because one unmaintainable method is a real cost however tidy the rest is.
+
+| Rating | Maintainability | Complexity | Inheritance depth | Efferent coupling |
+|---|---|---|---|---|
+| 1 Healthy | ≥ 70 | ≤ 10 | ≤ 3 | ≤ 10 |
+| 2 Acceptable | ≥ 50 | ≤ 20 | ≤ 5 | ≤ 20 |
+| 3 Concerning | ≥ 30 | ≤ 30 | ≤ 6 | ≤ 30 |
+| 4 Problematic | ≥ 15 | ≤ 50 | ≤ 8 | ≤ 40 |
+| 5 Fix ASAP | < 15 | > 50 | > 8 | > 40 |
+
+Every boundary lives in `MetricThresholds` and nowhere else, so a report and a review rule cannot disagree
+about the same method. Classify values with `MetricThresholds.RateMaintainability` and friends rather than
+writing your own comparisons. `GenerateWorkspaceSummary()` prints this legend above its output.
+
+**Not comparable to Visual Studio.** Complexity and both size metrics are counted differently from the
+Visual Studio metrics of the same names. Use them to compare elements within a solution, not across tools.
 
 ## Code review rules
 

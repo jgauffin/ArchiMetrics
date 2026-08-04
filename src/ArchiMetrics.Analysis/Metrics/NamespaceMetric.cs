@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="NamespaceMetric.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -23,6 +23,7 @@ namespace ArchiMetrics.Analysis.Metrics
             double maintainabilityIndex,
             int cyclomaticComplexity,
             int linesOfCode,
+            int executableStatements,
             IEnumerable<ITypeCoupling> classCouplings,
             int depthOfInheritance,
             string name,
@@ -32,6 +33,7 @@ namespace ArchiMetrics.Analysis.Metrics
             MaintainabilityIndex = maintainabilityIndex;
             CyclomaticComplexity = cyclomaticComplexity;
             LinesOfCode = linesOfCode;
+            ExecutableStatements = executableStatements;
             Dependencies = classCouplings.AsArray();
             DepthOfInheritance = depthOfInheritance;
             Name = name;
@@ -47,6 +49,8 @@ namespace ArchiMetrics.Analysis.Metrics
         public int CyclomaticComplexity { get; }
 
         public int LinesOfCode { get; }
+
+        public int ExecutableStatements { get; }
 
         public IEnumerable<ITypeCoupling> Dependencies { get; }
 

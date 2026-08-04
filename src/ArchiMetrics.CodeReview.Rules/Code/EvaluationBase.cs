@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="EvaluationBase.cs" company="Reimers.dk">
-//   Copyright � Reimers.dk 2014
+//   Copyright � Reimers.dk 2014
 //   This source is subject to the Microsoft Public License (Ms-PL).
 //   Please see http://go.microsoft.com/fwlink/?LinkID=131993 for details.
 //   All other rights reserved.
@@ -22,7 +22,8 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 
 	internal abstract class EvaluationBase : IEvaluation
 	{
-		private readonly LinesOfCodeCalculator _locCalculator = new LinesOfCodeCalculator();
+		private readonly PhysicalLinesCalculator _linesCalculator = new PhysicalLinesCalculator();
+		private readonly ExecutableStatementsCalculator _statementsCalculator = new ExecutableStatementsCalculator();
 
 		public abstract string ID { get; }
 
@@ -87,9 +88,26 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 			return FindMethodParent(node.Parent);
 		}
 
+		/// <summary>
+		/// Gets the number of source lines the node occupies, for reporting how much code a violation
+		/// covers. Blank lines, comments and documentation are excluded.
+		/// </summary>
 		protected int GetLinesOfCode(SyntaxNode node)
 		{
-			return _locCalculator.Calculate(node);
+			return _linesCalculator.Calculate(node);
+		}
+
+		/// <summary>
+		/// Gets the number of executable statements in the node.
+		/// </summary>
+		/// <remarks>
+		/// Size rules test against this rather than against physical lines so that reformatting a method —
+		/// wrapping a long argument list, splitting a condition over two lines — cannot push it over a
+		/// limit. A rule that fires on layout rather than on substance teaches developers to fight the tool.
+		/// </remarks>
+		protected int GetExecutableStatements(SyntaxNode node)
+		{
+			return _statementsCalculator.Calculate(node);
 		}
 
 		protected TypeDeclarationSyntax FindClassParent(SyntaxNode node)

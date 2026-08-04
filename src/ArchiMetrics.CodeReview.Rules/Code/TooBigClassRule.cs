@@ -85,13 +85,13 @@ namespace ArchiMetrics.CodeReview.Rules.Code
 		{
 			var declarationSyntax = (TypeDeclarationSyntax)node;
 			var snippet = declarationSyntax.ToFullString();
-			var linesOfCode = GetLinesOfCode(node);
+			var statements = GetExecutableStatements(node);
 
-			if (linesOfCode >= Limit)
+			if (statements >= Limit)
 			{
 				return new EvaluationResult
 						   {
-							   LinesOfCodeAffected = linesOfCode,
+							   LinesOfCodeAffected = GetLinesOfCode(node),
 							   Snippet = snippet
 						   };
 			}

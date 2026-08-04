@@ -27,6 +27,7 @@ namespace ArchiMetrics.Analysis.Metrics
     {
         private readonly Solution _solution;
         private readonly IAsyncFactory<ISymbol, ITypeDocumentation> _documentationFactory;
+        private readonly PhysicalLinesCalculator _linesCalculator = new PhysicalLinesCalculator();
 
         public TypeMetricsCalculator(SemanticModel semanticModel, Solution solution, IAsyncFactory<ISymbol, ITypeDocumentation> documentationFactory)
             : base(semanticModel)
@@ -45,7 +46,13 @@ namespace ArchiMetrics.Analysis.Metrics
             var source = CalculateClassCoupling(type, memberMetrics);
             var depthOfInheritance = CalculateDepthOfInheritance(type);
             var cyclomaticComplexity = memberMetrics.Sum(x => x.CyclomaticComplexity);
-            var linesOfCode = memberMetrics.Sum(x => x.LinesOfCode);
+            var executableStatements = memberMetrics.Sum(x => x.ExecutableStatements);
+
+            // Measured from the type's own declaration rather than by summing its members, so that the
+            // declaration line, the fields and the braces between members are all included. That is the
+            // size a reader actually meets when opening the file. Nested types are part of their parent
+            // here, because the collector does not report them separately.
+            var linesOfCode = _linesCalculator.Calculate(type);
             var maintainabilityIndex = CalculateAveMaintainabilityIndex(memberMetrics);
             var afferentCoupling = await CalculateAfferentCoupling(type);
             var efferentCoupling = GetEfferentCoupling(type, symbol);
@@ -57,6 +64,7 @@ namespace ArchiMetrics.Analysis.Metrics
                 modifier,
                 memberMetrics,
                 linesOfCode,
+                executableStatements,
                 cyclomaticComplexity,
                 maintainabilityIndex,
                 depthOfInheritance,
@@ -68,13 +76,21 @@ namespace ArchiMetrics.Analysis.Metrics
                 documentation);
         }
 
+        /// <summary>
+        /// Averages the members' maintainability, weighting each by its executable statement count so that
+        /// a large method counts for more than a one-line property.
+        /// </summary>
+        /// <remarks>
+        /// The weight is statements, not physical lines, for the same reason the index itself is built on
+        /// statements: reformatting a member must not change how much it influences its type's score.
+        /// </remarks>
         private static double CalculateAveMaintainabilityIndex(IEnumerable<IMemberMetric> memberMetrics)
         {
-            var source = memberMetrics.Select(x => new Tuple<int, double>(x.LinesOfCode, x.MaintainabilityIndex)).AsArray();
+            var source = memberMetrics.Select(x => new Tuple<int, double>(x.ExecutableStatements, x.MaintainabilityIndex)).AsArray();
             if (source.Any())
             {
-                var totalLinesOfCode = source.Sum(x => x.Item1);
-                return totalLinesOfCode == 0 ? 100.0 : source.Sum(x => x.Item1 * x.Item2) / totalLinesOfCode;
+                var totalStatements = source.Sum(x => x.Item1);
+                return totalStatements == 0 ? 100.0 : source.Sum(x => x.Item1 * x.Item2) / totalStatements;
             }
 
             return 100.0;

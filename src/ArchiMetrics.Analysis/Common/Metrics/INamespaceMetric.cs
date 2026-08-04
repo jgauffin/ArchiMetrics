@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="INamespaceMetric.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -20,10 +20,19 @@ namespace ArchiMetrics.Analysis.Common.Metrics
 	public interface INamespaceMetric : ICodeMetric
     {
         /// <summary>
-        /// Gets the max depth of inheritance for types in the namespace.
+        /// Gets the number of distinct types referenced from outside the namespace.
         /// </summary>
+        /// <remarks><b>Range: 0 and up, where lower is better.</b> No upper bound.</remarks>
         int ClassCoupling { get; }
 
+        /// <summary>
+        /// Gets the deepest inheritance chain among the types in the namespace.
+        /// </summary>
+        /// <remarks>
+        /// <b>Range: 0 and up, where lower is better.</b> This is the maximum rather than an average, so a
+        /// single deep hierarchy will show here even if every other type is flat. See
+        /// <see cref="MetricThresholds.DepthOfInheritance"/> for the bands.
+        /// </remarks>
         int DepthOfInheritance { get; }
 
         /// <summary>
@@ -32,8 +41,14 @@ namespace ArchiMetrics.Analysis.Common.Metrics
         IEnumerable<ITypeMetric> TypeMetrics { get; }
 
         /// <summary>
-        /// Gets the level of abstractness for the namespace.
+        /// Gets the share of the namespace's types that are abstract.
         /// </summary>
+        /// <remarks>
+        /// <b>Range: 0.0 to 1.0. Neither end is good in itself.</b> 0.0 means nothing here can be extended
+        /// without editing it; 1.0 means nothing here actually does anything. Read it against how much
+        /// depends on the namespace: one that is widely used benefits from being abstract, a leaf one does
+        /// not.
+        /// </remarks>
         double Abstractness { get; }
 
         /// <summary>

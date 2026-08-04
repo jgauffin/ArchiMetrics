@@ -15,6 +15,16 @@ namespace ArchiMetrics.Analysis.Common.Metrics
     /// </summary>
     public class Iso5055Report
     {
+        /// <summary>
+        /// Initialises an ISO/IEC 5055 report.
+        /// </summary>
+        /// <param name="totalLinesOfCode">Physical source lines across all analysed projects.</param>
+        /// <param name="security">The security category breakdown.</param>
+        /// <param name="reliability">The reliability category breakdown.</param>
+        /// <param name="performanceEfficiency">The performance efficiency category breakdown.</param>
+        /// <param name="maintainability">The maintainability category breakdown.</param>
+        /// <param name="allViolations">Every CWE-mapped violation found.</param>
+        /// <param name="coveredCweIds">The CWE identifiers the loaded rules can detect.</param>
         public Iso5055Report(
             int totalLinesOfCode,
             Iso5055CategoryResult security,
@@ -37,14 +47,33 @@ namespace ArchiMetrics.Analysis.Common.Metrics
         /// Total lines of code across all analysed projects, used as the
         /// denominator for violations/KLOC density calculations.
         /// </summary>
+        /// <remarks>
+        /// These are physical source lines — blank lines, comments and documentation excluded — because that
+        /// is what KLOC means everywhere else the term is used. Densities from this report are therefore not
+        /// comparable with figures produced before the size metrics were separated, when the denominator was
+        /// a count of statements and so a much smaller number.
+        /// </remarks>
         public int TotalLinesOfCode { get; }
 
+        /// <summary>
+        /// Gets the security breakdown — exploitable weaknesses. Coverage here is the weakest of the four,
+        /// because the rules are pattern matches and cannot follow tainted data.
+        /// </summary>
         public Iso5055CategoryResult Security { get; }
 
+        /// <summary>
+        /// Gets the reliability breakdown — weaknesses that risk crashes or data corruption.
+        /// </summary>
         public Iso5055CategoryResult Reliability { get; }
 
+        /// <summary>
+        /// Gets the performance efficiency breakdown — weaknesses that waste time or resources.
+        /// </summary>
         public Iso5055CategoryResult PerformanceEfficiency { get; }
 
+        /// <summary>
+        /// Gets the maintainability breakdown — structural decay. The best-covered of the four categories.
+        /// </summary>
         public Iso5055CategoryResult Maintainability { get; }
 
         /// <summary>
@@ -66,6 +95,14 @@ namespace ArchiMetrics.Analysis.Common.Metrics
     /// </summary>
     public class Iso5055CategoryResult
     {
+        /// <summary>
+        /// Initialises a category breakdown.
+        /// </summary>
+        /// <param name="category">The category described.</param>
+        /// <param name="violationCount">Total violations in the category.</param>
+        /// <param name="criticalViolationCount">Violations of critical severity.</param>
+        /// <param name="violationsPerKloc">Violations per thousand physical lines of code.</param>
+        /// <param name="violations">The violations themselves.</param>
         public Iso5055CategoryResult(
             Iso5055Category category,
             int violationCount,
@@ -80,11 +117,18 @@ namespace ArchiMetrics.Analysis.Common.Metrics
             Violations = violations;
         }
 
+        /// <summary>
+        /// Gets the category this breakdown describes.
+        /// </summary>
         public Iso5055Category Category { get; }
 
         /// <summary>
         /// Total number of violations in this category.
         /// </summary>
+        /// <remarks>
+        /// A raw count, so it grows with the size of the codebase. Use <see cref="ViolationsPerKloc"/> when
+        /// comparing projects, and this when planning the work in front of you.
+        /// </remarks>
         public int ViolationCount { get; }
 
         /// <summary>
@@ -97,6 +141,12 @@ namespace ArchiMetrics.Analysis.Common.Metrics
         /// <summary>
         /// Violation density: violations per 1000 lines of code.
         /// </summary>
+        /// <remarks>
+        /// <b>Range: 0.0 and up, where lower is better.</b> Normalising by size is what makes two codebases
+        /// comparable — a large project will always have more violations than a small one without being
+        /// worse. The denominator is physical source lines; see
+        /// <see cref="Iso5055Report.TotalLinesOfCode"/>.
+        /// </remarks>
         public double ViolationsPerKloc { get; }
 
         /// <summary>
@@ -108,6 +158,10 @@ namespace ArchiMetrics.Analysis.Common.Metrics
             Category != Iso5055Category.Security && Category != Iso5055Category.Reliability
             || CriticalViolationCount == 0;
 
+        /// <summary>
+        /// Gets the violations in this category, so a failing result can be acted on rather than only
+        /// reported.
+        /// </summary>
         public IReadOnlyList<EvaluationResult> Violations { get; }
     }
 }

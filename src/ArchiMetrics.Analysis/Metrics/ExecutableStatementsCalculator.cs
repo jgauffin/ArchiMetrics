@@ -1,12 +1,12 @@
 // --------------------------------------------------------------------------------------------------------------------
-// <copyright file="LinesOfCodeCalculator.cs" company="Reimers.dk">
-//   Copyright � Matthias Friedrich, Reimers.dk 2014
+// <copyright file="ExecutableStatementsCalculator.cs" company="Reimers.dk">
+//   Copyright © Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
 // </copyright>
 // <summary>
-//   Defines the LinesOfCodeCalculator type.
+//   Defines the ExecutableStatementsCalculator type.
 // </summary>
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -16,19 +16,34 @@ namespace ArchiMetrics.Analysis.Metrics
 	using Microsoft.CodeAnalysis.CSharp;
 	using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-	internal sealed class LinesOfCodeCalculator
+	/// <summary>
+	/// Counts the executable statements in a piece of code — the units of work it actually performs.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// This is a count of syntax constructs, not of text. Formatting cannot change it: a statement wrapped
+	/// over five lines still counts once, and blank lines, comments and braces count for nothing. That
+	/// property is why this, rather than physical lines, is the size input to the maintainability index —
+	/// reformatting code must not change its measured maintainability.
+	/// </para>
+	/// <para>
+	/// For the size a reader actually perceives when opening a file, use
+	/// <see cref="PhysicalLinesCalculator"/> instead.
+	/// </para>
+	/// </remarks>
+	internal sealed class ExecutableStatementsCalculator
 	{
 		public int Calculate(SyntaxNode node)
 		{
-			var innerCalculator = new InnerLinesOfCodeCalculator();
+			var innerCalculator = new InnerExecutableStatementsCalculator();
 			return innerCalculator.Calculate(node);
 		}
 
-		private class InnerLinesOfCodeCalculator : CSharpSyntaxWalker
+		private class InnerExecutableStatementsCalculator : CSharpSyntaxWalker
 		{
 			private int _counter;
 
-			public InnerLinesOfCodeCalculator()
+			public InnerExecutableStatementsCalculator()
 				: base(SyntaxWalkerDepth.Node)
 			{
 			}
@@ -116,10 +131,20 @@ namespace ArchiMetrics.Analysis.Metrics
 				_counter++;
 			}
 
+			/// <summary>
+			/// Counts an initializer as the single statement it is, however many elements it holds.
+			/// </summary>
+			/// <remarks>
+			/// This used to add one per element, so a hundred-entry lookup table measured as a hundred
+			/// statements. Because the maintainability index subtracts <c>16.2 * ln(size)</c>, that
+			/// collapsed the score of code which is in truth trivial to maintain — a table has no branches
+			/// and no logic to follow. Size should reflect work done, and building one collection is one
+			/// piece of work.
+			/// </remarks>
 			public override void VisitInitializerExpression(InitializerExpressionSyntax node)
 			{
 				base.VisitInitializerExpression(node);
-				_counter += node.Expressions.Count;
+				_counter++;
 			}
 
 			public override void VisitLabeledStatement(LabeledStatementSyntax node)
@@ -128,6 +153,11 @@ namespace ArchiMetrics.Analysis.Metrics
 				_counter++;
 			}
 
+			/// <summary>
+			/// Counts local declarations, except <c>const</c> ones. A constant is resolved by the compiler
+			/// and performs no work at run time, so charging it as a statement would penalise naming a
+			/// magic number — the opposite of what this tool should encourage.
+			/// </summary>
 			public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
 			{
 				base.VisitLocalDeclarationStatement(node);
@@ -167,12 +197,6 @@ namespace ArchiMetrics.Analysis.Metrics
 			public override void VisitUnsafeStatement(UnsafeStatementSyntax node)
 			{
 				base.VisitUnsafeStatement(node);
-				_counter++;
-			}
-
-			public override void VisitUsingDirective(UsingDirectiveSyntax node)
-			{
-				base.VisitUsingDirective(node);
 				_counter++;
 			}
 

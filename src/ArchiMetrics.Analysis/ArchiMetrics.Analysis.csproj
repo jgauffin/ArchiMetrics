@@ -14,6 +14,21 @@
     <PackageLicenseUrl>http://www.opensource.org/licenses/MIT</PackageLicenseUrl>
     <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <RepositoryUrl>https://github.com/jjrdk/archimetrics</RepositoryUrl>
+    <!--
+      Emits the XML documentation alongside the assembly so the metric scales, ranges and directions
+      documented on the public API reach consumers through IntelliSense and the NuGet package. Without
+      this the comments exist only in source, which for a library whose values are meaningless without
+      their scale is close to having no documentation at all.
+    -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      CS1591 (missing XML comment) is suppressed while documentation coverage is filled in progressively.
+      The metric API, the CodeAnalysisAgent facade and the result DTOs are documented, because those are
+      the types a consumer reads values from and a metric value without its scale is not usable. The
+      remaining public surface is largely Roslyn plumbing and extension helpers. Remove this suppression
+      once coverage is complete, so the compiler starts guarding it.
+    -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Description>
       The package provides code analysis features using the Roslyn CTP.
 
@@ -22,7 +37,8 @@
       Project Level
 
       - Cyclomatic Complexity
-      - LinesOfCode
+      - Lines of Code
+      - Executable Statements
       - Maintainability Index
       - Project Dependencies
       - Type Couplings
@@ -34,7 +50,8 @@
       Namespace Level
 
       - Cyclomatic Complexity
-      - LinesOfCode
+      - Lines of Code
+      - Executable Statements
       - Maintainability Index
       - Project Dependencies
       - Type Couplings
@@ -44,7 +61,8 @@
       Type Level
 
       - Cyclomatic Complexity
-      - LinesOfCode
+      - Lines of Code
+      - Executable Statements
       - Maintainability Index
       - Project Dependencies
       - Type Couplings
@@ -57,7 +75,8 @@
       Member Level
 
       - Cyclomatic Complexity
-      - Lines Of Code
+      - Lines of Code
+      - Executable Statements
       - Maintainability Index
       - Project Dependencies
       - Type Couplings

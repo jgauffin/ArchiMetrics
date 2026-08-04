@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="MemberMetric.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -27,6 +27,7 @@ namespace ArchiMetrics.Analysis.Metrics
 			IHalsteadMetrics halstead,
 			int lineNumber,
 			int linesOfCode,
+			int executableStatements,
 			double maintainabilityIndex,
 			int cyclomaticComplexity,
 			string name,
@@ -41,6 +42,7 @@ namespace ArchiMetrics.Analysis.Metrics
 			AccessModifier = accessModifier;
 			LineNumber = lineNumber;
 			LinesOfCode = linesOfCode;
+			ExecutableStatements = executableStatements;
 			MaintainabilityIndex = maintainabilityIndex;
 			CyclomaticComplexity = cyclomaticComplexity;
 			Name = name;
@@ -58,6 +60,8 @@ namespace ArchiMetrics.Analysis.Metrics
 		public int LineNumber { get; }
 
 		public int LinesOfCode { get; }
+
+		public int ExecutableStatements { get; }
 
 		public double MaintainabilityIndex { get; }
 
