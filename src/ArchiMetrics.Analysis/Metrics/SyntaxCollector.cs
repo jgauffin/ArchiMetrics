@@ -70,6 +70,15 @@ namespace ArchiMetrics.Analysis.Metrics
 			_types.Add(node);
 		}
 
+		/// <summary>
+		/// Collects <c>record</c> and <c>record struct</c> declarations, so records are measured
+		/// alongside the other type kinds rather than silently missing from the report.
+		/// </summary>
+		public override void VisitRecordDeclaration(RecordDeclarationSyntax node)
+		{
+			_types.Add(node);
+		}
+
 		public override void VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
 		{
 			_members.Add(node);

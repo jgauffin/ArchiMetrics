@@ -64,6 +64,20 @@ namespace ArchiMetrics.Analysis.Metrics
 				base.VisitStructDeclaration(node);
 				_types.Add(node);
 			}
+
+			/// <summary>
+			/// Collects <c>record</c> and <c>record struct</c> declarations.
+			/// </summary>
+			/// <remarks>
+			/// Records are ordinary types that carry logic and therefore belong in the metrics
+			/// just like classes and structs. Skipping them would leave holes in the report and
+			/// make any average computed over the types unrepresentative of the code base.
+			/// </remarks>
+			public override void VisitRecordDeclaration(RecordDeclarationSyntax node)
+			{
+				base.VisitRecordDeclaration(node);
+				_types.Add(node);
+			}
 		}
 	}
 }

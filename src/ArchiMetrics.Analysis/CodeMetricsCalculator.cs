@@ -160,12 +160,57 @@ namespace ArchiMetrics.Analysis
             }
 
             var result = AddToCompilation(compilation, tree);
-            var childNodes = result.Item2.GetRoot().DescendantNodesAndSelf();
-            typeNode.Syntax = childNodes.OfType<TypeDeclarationSyntax>().First();
+            if (!ReferenceEquals(result.Item2, tree))
+            {
+                // AddToCompilation had to rebuild the tree, so the node we were handed no longer
+                // belongs to the tree the semantic model is built from and has to be re-resolved.
+                // It must be re-resolved to *this* type though: a file commonly declares several
+                // types, so blindly taking the first type declaration in the file would report
+                // every type in that file under the first type's name - hiding the later types
+                // from the output entirely and skewing every average computed over it.
+                typeNode.Syntax = FindEquivalentDeclaration(result.Item2, typeNode.Syntax);
+            }
+
             return new Tuple<Compilation, SemanticModel, TypeDeclarationSyntaxInfo>(
                 result.Item1,
                 result.Item1.GetSemanticModel(result.Item2),
                 typeNode);
+        }
+
+        /// <summary>
+        /// Locates the declaration in <paramref name="tree"/> that corresponds to
+        /// <paramref name="original"/>, which came from a tree that has since been rebuilt.
+        /// </summary>
+        /// <remarks>
+        /// Matching on the qualified type name is the readable, order-independent way to do this.
+        /// Rebuilding preserves declaration order, so the position of the declaration within the
+        /// file is a safe fallback for the rare type whose name cannot be recovered - anything is
+        /// better than falling back to "the first type in the file", which quietly produces
+        /// metrics attributed to the wrong type.
+        /// </remarks>
+        private static TypeDeclarationSyntax FindEquivalentDeclaration(SyntaxTree tree, TypeDeclarationSyntax original)
+        {
+            var candidates = tree.GetRoot()
+                .DescendantNodesAndSelf()
+                .OfType<TypeDeclarationSyntax>()
+                .AsArray();
+            var name = original.GetName();
+            var match = candidates.FirstOrDefault(x => x.GetName() == name);
+            if (match != null)
+            {
+                return match;
+            }
+
+            var originalIndex = original.SyntaxTree
+                ?.GetRoot()
+                .DescendantNodesAndSelf()
+                .OfType<TypeDeclarationSyntax>()
+                .ToList()
+                .IndexOf(original) ?? -1;
+
+            return originalIndex >= 0 && originalIndex < candidates.Length
+                ? candidates[originalIndex]
+                : original;
         }
 
         private static Tuple<Compilation, SyntaxTree> AddToCompilation(Compilation compilation, SyntaxTree tree)

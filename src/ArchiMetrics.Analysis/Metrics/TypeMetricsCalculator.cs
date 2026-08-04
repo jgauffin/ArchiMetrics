@@ -1,6 +1,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 // <copyright file="TypeMetricsCalculator.cs" company="Reimers.dk">
-//   Copyright © Matthias Friedrich, Reimers.dk 2014
+//   Copyright ï¿½ Matthias Friedrich, Reimers.dk 2014
 //   This source is subject to the MIT License.
 //   Please see https://opensource.org/licenses/MIT for details.
 //   All other rights reserved.
@@ -80,13 +80,25 @@ namespace ArchiMetrics.Analysis.Metrics
             return 100.0;
         }
 
+        /// <summary>
+        /// Maps a declaration onto the metric kind it is reported as.
+        /// </summary>
+        /// <remarks>
+        /// Records are reported by the kind of type they actually compile to - a <c>record</c> is
+        /// a class and a <c>record struct</c> is a struct. Reporting them as their underlying kind
+        /// keeps the output comparable across a code base that mixes the two syntaxes, instead of
+        /// dropping records into an <see cref="TypeMetricKind.Unknown"/> bucket that tells the
+        /// reader nothing.
+        /// </remarks>
         private static TypeMetricKind GetMetricKind(TypeDeclarationSyntax type)
         {
             switch (type.Kind())
             {
                 case SyntaxKind.ClassDeclaration:
+                case SyntaxKind.RecordDeclaration:
                     return TypeMetricKind.Class;
                 case SyntaxKind.StructDeclaration:
+                case SyntaxKind.RecordStructDeclaration:
                     return TypeMetricKind.Struct;
                 case SyntaxKind.InterfaceDeclaration:
                     return TypeMetricKind.Interface;
